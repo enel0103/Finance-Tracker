@@ -5,10 +5,12 @@ export const CARRYOVER_INCOME_CATEGORIES = [
   LEGACY_CASH_ON_HAND_CATEGORY
 ]
 
+// User-selectable income categories (shown in the dropdown).
+// System categories like BUFFER_CARRYOVER_CATEGORY are intentionally excluded —
+// they're created only by app logic (e.g. the "claim past buffer" button).
 export const INCOME_CATEGORIES = [
   'Salary',
-  'Freelance',
-  BUFFER_CARRYOVER_CATEGORY
+  'Freelance'
 ]
 
 export const EXPENSE_CATEGORIES = [
@@ -26,23 +28,22 @@ export const EXPENSE_CATEGORIES = [
 export const ALL_CATEGORIES = [...INCOME_CATEGORIES, ...EXPENSE_CATEGORIES]
 
 export const DEFAULT_BUDGETS = [
-  { category: 'Salary', amount: 28000 },
+  { category: 'Salary', amount: 0 },
   { category: 'Freelance', amount: 0 },
-  { category: BUFFER_CARRYOVER_CATEGORY, amount: 0 },
-  { category: 'Food', amount: 4000 },
-  { category: 'Bills', amount: 4388 },
-  { category: 'Subscriptions', amount: 169 },
-  { category: 'Gym', amount: 1120 },
+  { category: 'Food', amount: 0 },
+  { category: 'Bills', amount: 0 },
+  { category: 'Subscriptions', amount: 0 },
+  { category: 'Gym', amount: 0 },
   { category: 'Investments', amount: 0 },
-  { category: 'Savings', amount: 3000 },
+  { category: 'Savings', amount: 0 },
   { category: 'Emergency Fund', amount: 0 },
-  { category: 'Future Wants', amount: 1000 },
-  { category: 'Misc', amount: 750 }
+  { category: 'Future Wants', amount: 0 },
+  { category: 'Misc', amount: 0 }
 ]
 
 export const DEFAULT_SETTINGS = [
-  { key: 'emergency_fund_current', value: '50000' },
-  { key: 'emergency_fund_target', value: '80000' }
+  { key: 'emergency_fund_current', value: '0' },
+  { key: 'emergency_fund_target', value: '0' }
 ]
 
 export const CATEGORY_COLORS = {
@@ -78,5 +79,5 @@ export const CATEGORY_BG = {
 }
 
 export function isIncomeCategory(cat) {
-  return INCOME_CATEGORIES.includes(cat)
+  return INCOME_CATEGORIES.includes(cat) || CARRYOVER_INCOME_CATEGORIES.includes(cat)
 }

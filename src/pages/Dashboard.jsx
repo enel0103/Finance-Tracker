@@ -188,7 +188,12 @@ export default function Dashboard() {
     setCarryDraft(amount > 0 ? amount.toFixed(2) : '')
   }, [bufferSummary.availableFromPast, year, month])
 
-  const incomeRows = allIncome.map((c) => ({
+  // Include carryover/system categories so claimed-buffer income still shows up.
+  const incomeCategoriesForDisplay = [
+    ...allIncome,
+    ...CARRYOVER_INCOME_CATEGORIES.filter((c) => !allIncome.includes(c))
+  ]
+  const incomeRows = incomeCategoriesForDisplay.map((c) => ({
     cat: c,
     amount: totals.byCategory[c]?.income || 0
   })).filter((r) => r.amount > 0)
