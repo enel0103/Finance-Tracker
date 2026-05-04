@@ -21,8 +21,12 @@ import {
   INCOME_CATEGORIES
 } from '../lib/constants'
 import MonthSelector from '../components/MonthSelector.jsx'
+import { useAuth } from '../contexts/AuthContext.jsx'
+import { useCategories } from '../contexts/CategoriesContext.jsx'
 
 export default function Dashboard() {
+  const { user } = useAuth()
+  const { allIncome, allExpense } = useCategories()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())
@@ -184,12 +188,12 @@ export default function Dashboard() {
     setCarryDraft(amount > 0 ? amount.toFixed(2) : '')
   }, [bufferSummary.availableFromPast, year, month])
 
-  const incomeRows = INCOME_CATEGORIES.map((c) => ({
+  const incomeRows = allIncome.map((c) => ({
     cat: c,
     amount: totals.byCategory[c]?.income || 0
   })).filter((r) => r.amount > 0)
 
-  const expenseRows = EXPENSE_CATEGORIES.map((c) => ({
+  const expenseRows = allExpense.map((c) => ({
     cat: c,
     amount: totals.byCategory[c]?.expense || 0
   })).filter((r) => r.amount > 0)
@@ -219,7 +223,8 @@ export default function Dashboard() {
       category: BUFFER_CARRYOVER_CATEGORY,
       income: amount,
       expense: 0,
-      notes: 'Added from previous month buffers'
+      notes: 'Added from previous month buffers',
+      user_id: user.id
     })
     setSavingCarry(false)
 
@@ -240,12 +245,12 @@ export default function Dashboard() {
     const tgt = Number(efDraft.target) || 0
     await Promise.all([
       supabase.from('settings').upsert(
-        { key: 'emergency_fund_current', value: String(base) },
-        { onConflict: 'key' }
+        { key: 'emergency_fund_current', value: String(base), user_id: user.id },
+        { onConflict: 'user_id,key' }
       ),
       supabase.from('settings').upsert(
-        { key: 'emergency_fund_target', value: String(tgt) },
-        { onConflict: 'key' }
+        { key: 'emergency_fund_target', value: String(tgt), user_id: user.id },
+        { onConflict: 'user_id,key' }
       )
     ])
     setEfBase(base)

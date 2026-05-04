@@ -1,17 +1,22 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Receipt, Pencil, Check, X } from 'lucide-react'
+import { Plus, Trash2, Receipt, Pencil, Check, X, Tags, Settings2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatPeso, monthRange, todayISO } from '../lib/utils'
 import {
   CATEGORY_BG,
   EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES,
-  isIncomeCategory
+  INCOME_CATEGORIES
 } from '../lib/constants'
 import MonthSelector from '../components/MonthSelector.jsx'
+import { useAuth } from '../contexts/AuthContext.jsx'
+import { useCategories } from '../contexts/CategoriesContext.jsx'
 
 export default function Transactions() {
+  const { user } = useAuth()
+  const { allIncome, allExpense, custom, addCategory, removeCategory } = useCategories()
+  const isIncomeCat = (cat) => allIncome.includes(cat)
   const now = new Date()
+  const [showManage, setShowManage] = useState(false)
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())
   const [txs, setTxs] = useState([])
@@ -78,13 +83,14 @@ export default function Transactions() {
     if (!amt || amt <= 0 || !form.category || !form.date) return
 
     setSaving(true)
-    const isIncome = isIncomeCategory(form.category)
+    const isIncome = isIncomeCat(form.category)
     const row = {
       date: form.date,
       category: form.category,
       income: isIncome ? amt : 0,
       expense: isIncome ? 0 : amt,
-      notes: form.notes || null
+      notes: form.notes || null,
+      user_id: user.id
     }
     const { error } = await supabase.from('transactions').insert(row)
     setSaving(false)
@@ -134,7 +140,7 @@ export default function Transactions() {
     if (!amt || amt <= 0 || !editDraft.category || !editDraft.date) return
 
     setSavingEdit(true)
-    const isIncome = isIncomeCategory(editDraft.category)
+    const isIncome = isIncomeCat(editDraft.category)
     const update = {
       date: editDraft.date,
       category: editDraft.category,
@@ -167,6 +173,14 @@ export default function Transactions() {
             onChange={(y, m) => { setYear(y); setMonth(m) }}
           />
           <button
+            onClick={() => setShowManage((v) => !v)}
+            className="btn-ghost"
+            title="Manage categories"
+          >
+            <Tags className="w-4 h-4" />
+            <span className="hidden sm:inline">Categories</span>
+          </button>
+          <button
             onClick={() => {
               setForm((prev) => ({
                 ...prev,
@@ -181,6 +195,15 @@ export default function Transactions() {
           </button>
         </div>
       </div>
+
+      {showManage && (
+        <ManageCategories
+          custom={custom}
+          addCategory={addCategory}
+          removeCategory={removeCategory}
+          onClose={() => setShowManage(false)}
+        />
+      )}
 
       {showForm && (
         <form onSubmit={handleAdd} className="card space-y-4">
@@ -200,6 +223,8 @@ export default function Transactions() {
               <CategorySelect
                 value={form.category}
                 onChange={(v) => setForm({ ...form, category: v })}
+                incomeList={allIncome}
+                expenseList={allExpense}
               />
             </div>
             <div>
@@ -264,7 +289,7 @@ export default function Transactions() {
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                   {txs.map((t) => {
                     if (editingId === t.id) {
-                      const draftIsIncome = isIncomeCategory(editDraft.category)
+                      const draftIsIncome = isIncomeCat(editDraft.category)
                       return (
                         <tr key={t.id} className="bg-emerald-50/40 dark:bg-emerald-500/5">
                           <td className="px-4 py-2">
@@ -280,6 +305,8 @@ export default function Transactions() {
                               value={editDraft.category}
                               onChange={(v) => setEditDraft({ ...editDraft, category: v })}
                               compact
+                              incomeList={allIncome}
+                              expenseList={allExpense}
                             />
                           </td>
                           <td className="px-4 py-2" colSpan={2}>
@@ -403,6 +430,8 @@ export default function Transactions() {
                         <CategorySelect
                           value={editDraft.category}
                           onChange={(v) => setEditDraft({ ...editDraft, category: v })}
+                          incomeList={allIncome}
+                          expenseList={allExpense}
                         />
                       </div>
                       <div>
@@ -477,7 +506,129 @@ export default function Transactions() {
   )
 }
 
-function CategorySelect({ value, onChange, compact }) {
+function ManageCategories({ custom, addCategory, removeCategory, onClose }) {
+  const [name, setName] = useState('')
+  const [type, setType] = useState('expense')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleAdd = async (e) => {
+    e.preventDefault()
+    setError('')
+    setSaving(true)
+    const res = await addCategory(name, type)
+    setSaving(false)
+    if (!res.ok) {
+      setError(res.error)
+      return
+    }
+    setName('')
+  }
+
+  const customIncome = custom.filter((c) => c.type === 'income')
+  const customExpense = custom.filter((c) => c.type === 'expense')
+
+  return (
+    <div className="card space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Settings2 className="w-4 h-4 text-slate-400" />
+          <h2 className="font-semibold">Manage categories</h2>
+        </div>
+        <button onClick={onClose} className="btn-ghost !p-2" aria-label="Close">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <p className="text-xs text-slate-500">
+        Default categories can't be removed. You can add your own here — they'll show up in the
+        category dropdown when adding or editing a transaction.
+      </p>
+
+      <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
+        <input
+          type="text"
+          required
+          maxLength={32}
+          placeholder="New category name"
+          className="input"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+        <select
+          className="input sm:w-36"
+          value={type}
+          onChange={(e) => setType(e.target.value)}
+        >
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </select>
+        <button type="submit" disabled={saving} className="btn-primary">
+          <Plus className="w-4 h-4" />
+          Add
+        </button>
+      </form>
+
+      {error && (
+        <div className="text-sm text-expense bg-expense/10 px-3 py-2 rounded-lg">{error}</div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <CategoryColumn
+          title="Custom income"
+          items={customIncome}
+          onRemove={removeCategory}
+          tone="income"
+        />
+        <CategoryColumn
+          title="Custom expenses"
+          items={customExpense}
+          onRemove={removeCategory}
+          tone="expense"
+        />
+      </div>
+    </div>
+  )
+}
+
+function CategoryColumn({ title, items, onRemove, tone }) {
+  return (
+    <div>
+      <h3 className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">{title}</h3>
+      {items.length === 0 ? (
+        <p className="text-xs text-slate-400 italic">None yet.</p>
+      ) : (
+        <ul className="space-y-1.5">
+          {items.map((c) => (
+            <li
+              key={c.name}
+              className="flex items-center justify-between rounded-lg bg-slate-100 dark:bg-slate-800/60 px-3 py-1.5"
+            >
+              <span className={`text-sm ${tone === 'income' ? 'text-income' : 'text-expense'}`}>
+                {c.name}
+              </span>
+              <button
+                onClick={() => {
+                  if (confirm(`Remove "${c.name}"? Existing transactions in this category will keep the label but the option won't appear in the dropdown anymore.`)) {
+                    onRemove(c.name)
+                  }
+                }}
+                className="p-1 rounded text-slate-400 hover:text-expense"
+                aria-label={`Remove ${c.name}`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function CategorySelect({ value, onChange, compact, incomeList, expenseList }) {
+  const income = incomeList || INCOME_CATEGORIES
+  const expense = expenseList || EXPENSE_CATEGORIES
   return (
     <select
       className={`input ${compact ? '!py-1 !text-sm' : ''}`}
@@ -485,10 +636,10 @@ function CategorySelect({ value, onChange, compact }) {
       onChange={(e) => onChange(e.target.value)}
     >
       <optgroup label="Income">
-        {INCOME_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+        {income.map((c) => <option key={c}>{c}</option>)}
       </optgroup>
       <optgroup label="Expenses">
-        {EXPENSE_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+        {expense.map((c) => <option key={c}>{c}</option>)}
       </optgroup>
     </select>
   )

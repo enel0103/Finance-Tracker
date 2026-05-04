@@ -5,16 +5,23 @@ import Dashboard from './pages/Dashboard.jsx'
 import Transactions from './pages/Transactions.jsx'
 import BudgetPlan from './pages/BudgetPlan.jsx'
 import MonthlyHistory from './pages/MonthlyHistory.jsx'
+import Login from './pages/Login.jsx'
 import { ensureSeed } from './lib/seed.js'
+import { useAuth } from './contexts/AuthContext.jsx'
+import { CategoriesProvider } from './contexts/CategoriesContext.jsx'
 
 export default function App() {
-  const [ready, setReady] = useState(false)
+  const { user, loading } = useAuth()
+  const [seeded, setSeeded] = useState(false)
 
   useEffect(() => {
-    ensureSeed().finally(() => setReady(true))
-  }, [])
+    if (user) {
+      setSeeded(false)
+      ensureSeed(user.id).finally(() => setSeeded(true))
+    }
+  }, [user])
 
-  if (!ready) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-slate-400">
         Loading…
@@ -22,15 +29,29 @@ export default function App() {
     )
   }
 
+  if (!user) {
+    return <Login />
+  }
+
+  if (!seeded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-slate-400">
+        Setting up your account…
+      </div>
+    )
+  }
+
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/transactions" element={<Transactions />} />
-        <Route path="/budget" element={<BudgetPlan />} />
-        <Route path="/history" element={<MonthlyHistory />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Route>
-    </Routes>
+    <CategoriesProvider>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/transactions" element={<Transactions />} />
+          <Route path="/budget" element={<BudgetPlan />} />
+          <Route path="/history" element={<MonthlyHistory />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </CategoriesProvider>
   )
 }

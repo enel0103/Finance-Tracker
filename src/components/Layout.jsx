@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Receipt, Wallet, History, Wallet2 } from 'lucide-react'
+import { LayoutDashboard, Receipt, Wallet, History, Wallet2, LogOut } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext.jsx'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -11,6 +12,7 @@ const NAV = [
 export default function Layout() {
   const location = useLocation()
   const title = NAV.find((n) => n.to === location.pathname)?.label || 'Dashboard'
+  const { user, signOut } = useAuth()
 
   return (
     <div className="min-h-screen flex">
@@ -22,9 +24,9 @@ export default function Layout() {
           </div>
           <div>
             <div className="font-bold text-slate-900 dark:text-white leading-tight">
-              Nel's Money
+              Yutori
             </div>
-            <div className="text-xs text-slate-500">Tracker</div>
+            <div className="text-xs text-slate-500">Finance Tracker</div>
           </div>
         </div>
         <nav className="px-3 py-2 flex-1 space-y-1">
@@ -46,8 +48,22 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
-        <div className="p-4 text-xs text-slate-400 border-t border-slate-200 dark:border-slate-800">
-          Built by ENERU
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
+          {user && (
+            <div className="text-xs text-slate-500 truncate" title={user.email}>
+              {user.email}
+            </div>
+          )}
+          <button
+            onClick={signOut}
+            className="w-full flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+          >
+            <LogOut className="w-4 h-4" />
+            Sign out
+          </button>
+          <div className="text-[10px] text-slate-400 text-center">
+            Built by ENERU
+          </div>
         </div>
       </aside>
 
@@ -58,9 +74,21 @@ export default function Layout() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
               <Wallet2 className="w-4 h-4 text-white" />
             </div>
-            <div className="font-semibold text-sm">Nel's Money Tracker</div>
+            <div className="leading-tight">
+              <div className="font-semibold text-sm">Yutori</div>
+              <div className="text-[10px] text-slate-500">Finance Tracker</div>
+            </div>
           </div>
-          <span className="text-xs text-slate-500">{title}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">{title}</span>
+            <button
+              onClick={signOut}
+              className="p-1.5 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Sign out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 px-4 md:px-8 py-6 pb-24 md:pb-8 max-w-6xl w-full mx-auto">
