@@ -23,8 +23,24 @@ export function AuthProvider({ children }) {
   const signIn = (email, password) =>
     supabase.auth.signInWithPassword({ email, password })
 
-  const signUp = (email, password) =>
-    supabase.auth.signUp({ email, password })
+  const signUp = (email, password, username) =>
+    supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: username ? { username } : undefined
+      }
+    })
+
+  const updateUsername = async (username) => {
+    const { data, error } = await supabase.auth.updateUser({
+      data: { username }
+    })
+    if (!error && data?.user) {
+      setSession((s) => (s ? { ...s, user: data.user } : s))
+    }
+    return { data, error }
+  }
 
   const signOut = () => supabase.auth.signOut()
 
@@ -34,7 +50,8 @@ export function AuthProvider({ children }) {
     loading,
     signIn,
     signUp,
-    signOut
+    signOut,
+    updateUsername
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

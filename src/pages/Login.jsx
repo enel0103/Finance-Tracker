@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Wallet2, Mail, Lock, Eye, EyeOff } from 'lucide-react'
+import { Wallet2, Mail, Lock, Eye, EyeOff, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
 export default function Login() {
@@ -7,6 +7,7 @@ export default function Login() {
   const [mode, setMode] = useState('signin')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [username, setUsername] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [info, setInfo] = useState('')
@@ -21,12 +22,23 @@ export default function Login() {
       setError('Password must be at least 6 characters.')
       return
     }
+    if (mode === 'signup') {
+      const trimmed = username.trim()
+      if (trimmed.length < 2) {
+        setError('Username must be at least 2 characters.')
+        return
+      }
+      if (trimmed.length > 24) {
+        setError('Username must be 24 characters or fewer.')
+        return
+      }
+    }
 
     setSubmitting(true)
     const { data, error } =
       mode === 'signin'
         ? await signIn(email, password)
-        : await signUp(email, password)
+        : await signUp(email, password, username.trim())
     setSubmitting(false)
 
     if (error) {
@@ -58,6 +70,26 @@ export default function Login() {
         </div>
 
         <form onSubmit={handleSubmit} className="card space-y-4">
+          {mode === 'signup' && (
+            <div>
+              <label className="label">Username</label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  minLength={2}
+                  maxLength={24}
+                  className="input pl-9"
+                  placeholder="What should we call you?"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoComplete="nickname"
+                />
+              </div>
+            </div>
+          )}
+
           <div>
             <label className="label">Email</label>
             <div className="relative">

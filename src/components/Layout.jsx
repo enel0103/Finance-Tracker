@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Receipt, Wallet, History, Wallet2, LogOut } from 'lucide-react'
+import { LayoutDashboard, Receipt, Wallet, History, Wallet2, LogOut, Settings as SettingsIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
 const NAV = [
@@ -50,9 +50,28 @@ export default function Layout() {
         </nav>
         <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
           {user && (
-            <div className="text-xs text-slate-500 truncate" title={user.email}>
-              {user.email}
-            </div>
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                `block rounded-lg px-2 py-1.5 -mx-2 transition-colors ${
+                  isActive
+                    ? 'bg-slate-100 dark:bg-slate-800'
+                    : 'hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`
+              }
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">
+                    {user.user_metadata?.username || user.email?.split('@')[0]}
+                  </div>
+                  <div className="text-[11px] text-slate-500 truncate" title={user.email}>
+                    {user.email}
+                  </div>
+                </div>
+                <SettingsIcon className="w-4 h-4 text-slate-400 flex-shrink-0" />
+              </div>
+            </NavLink>
           )}
           <button
             onClick={signOut}
@@ -81,6 +100,13 @@ export default function Layout() {
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500">{title}</span>
+            <NavLink
+              to="/settings"
+              className="p-1.5 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Settings"
+            >
+              <SettingsIcon className="w-4 h-4" />
+            </NavLink>
             <button
               onClick={signOut}
               className="p-1.5 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
