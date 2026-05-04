@@ -7,6 +7,7 @@ import BudgetPlan from './pages/BudgetPlan.jsx'
 import MonthlyHistory from './pages/MonthlyHistory.jsx'
 import Login from './pages/Login.jsx'
 import Settings from './pages/Settings.jsx'
+import Bills from './pages/Bills.jsx'
 import { ensureSeed } from './lib/seed.js'
 import { useAuth } from './contexts/AuthContext.jsx'
 import { CategoriesProvider } from './contexts/CategoriesContext.jsx'
@@ -50,6 +51,7 @@ export default function App() {
           <Route path="/transactions" element={<Transactions />} />
           <Route path="/budget" element={<BudgetPlan />} />
           <Route path="/history" element={<MonthlyHistory />} />
+          <Route path="/bills" element={<Bills />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>
