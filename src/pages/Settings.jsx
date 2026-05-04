@@ -1,10 +1,35 @@
-import { useState } from 'react'
-import { User, Mail, Check, Lock, Eye, EyeOff } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { User, Mail, Check, Lock, Eye, EyeOff, Download, Smartphone } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { supabase } from '../lib/supabase'
 
 export default function Settings() {
   const { user, updateUsername } = useAuth()
+  const [installPrompt, setInstallPrompt] = useState(null)
+  const [isInstalled, setIsInstalled] = useState(false)
+
+  useEffect(() => {
+    // Check if already installed as PWA
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true)
+    }
+
+    const handler = (e) => {
+      e.preventDefault()
+      setInstallPrompt(e)
+    }
+    window.addEventListener('beforeinstallprompt', handler)
+    window.addEventListener('appinstalled', () => setIsInstalled(true))
+    return () => window.removeEventListener('beforeinstallprompt', handler)
+  }, [])
+
+  const handleInstall = async () => {
+    if (!installPrompt) return
+    installPrompt.prompt()
+    const { outcome } = await installPrompt.userChoice
+    if (outcome === 'accepted') setIsInstalled(true)
+    setInstallPrompt(null)
+  }
 
   const [username, setUsername] = useState(user?.user_metadata?.username || '')
   const [savingName, setSavingName] = useState(false)
@@ -68,6 +93,28 @@ export default function Settings() {
         <h1 className="text-2xl font-bold tracking-tight">Account Settings</h1>
         <p className="text-sm text-slate-500">Manage your profile and password</p>
       </div>
+
+      {/* Install app */}
+      {!isInstalled && (
+        <div className="card flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Smartphone className="w-5 h-5 text-slate-400 flex-shrink-0" />
+            <div>
+              <div className="text-sm font-medium">Install Yutori</div>
+              <div className="text-xs text-slate-500">
+                {installPrompt
+                  ? 'Add to your home screen for a better experience'
+                  : 'Open this page in Chrome, then tap ⋮ → "Add to Home Screen"'}
+              </div>
+            </div>
+          </div>
+          {installPrompt && (
+            <button onClick={handleInstall} className="btn-primary flex-shrink-0">
+              <Download className="w-4 h-4" /> Install
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Profile */}
       <form onSubmit={saveName} className="card space-y-4">
