@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, Receipt, Wallet, History, Wallet2, LogOut, Settings as SettingsIcon, Bell } from 'lucide-react'
+import { LayoutDashboard, Receipt, Wallet, History, Wallet2, LogOut, Settings as SettingsIcon, Bell, HandCoins } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 
 const NAV = [
@@ -7,8 +7,11 @@ const NAV = [
   { to: '/transactions', label: 'Transactions', icon: Receipt },
   { to: '/budget', label: 'Budget', icon: Wallet },
   { to: '/bills', label: 'Bills', icon: Bell },
+  { to: '/loans', label: 'Loans', icon: HandCoins },
   { to: '/history', label: 'History', icon: History }
 ]
+
+const BOTTOM_NAV = NAV.slice(0, 5)
 
 export default function Layout() {
   const location = useLocation()
@@ -126,7 +129,7 @@ export default function Layout() {
       {/* Bottom nav (mobile) — shows first 5 nav items */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
         <div className="grid grid-cols-5">
-          {NAV.map(({ to, label, icon: Icon }) => (
+          {BOTTOM_NAV.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
