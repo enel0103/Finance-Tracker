@@ -281,27 +281,28 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <SummaryCard
           label="Income"
-          sublabel="New money"
+          sublabel="New money earned"
           value={totals.regularIncome}
           icon={<TrendingUp className="w-5 h-5" />}
           accent="text-income bg-income/10"
         />
         <SummaryCard
           label="Available"
-          sublabel="Income + carryover"
+          sublabel="Income + carried-over buffer"
           value={totals.availableMoney}
           icon={<Wallet className="w-5 h-5" />}
           accent="text-savings bg-savings/10"
         />
         <SummaryCard
           label="Expenses"
+          sublabel="Total spent this month"
           value={totals.expense}
           icon={<TrendingDown className="w-5 h-5" />}
           accent="text-expense bg-expense/10"
         />
         <SummaryCard
           label="Buffer"
-          sublabel="This month only"
+          sublabel="Income − Expenses (leftover)"
           value={totals.newBuffer}
           icon={<PiggyBank className="w-5 h-5" />}
           accent={totals.newBuffer >= 0 ? 'text-emerald-500 bg-emerald-500/10' : 'text-expense bg-expense/10'}
