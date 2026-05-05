@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { History, TrendingUp, TrendingDown, Wallet, PiggyBank } from 'lucide-react'
+import { History, TrendingUp, TrendingDown, Wallet, PiggyBank, FileText } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { formatPeso, monthLabel } from '../lib/utils'
+import { formatPeso, monthLabel, monthRange } from '../lib/utils'
 import { CARRYOVER_INCOME_CATEGORIES } from '../lib/constants'
+import ReportModal from '../components/ReportModal.jsx'
+import { useCategories } from '../contexts/CategoriesContext.jsx'
 
 export default function MonthlyHistory() {
   const [txs, setTxs] = useState([])
   const [loading, setLoading] = useState(true)
+  const { allIncome, allExpense } = useCategories()
+
+  const [report, setReport] = useState(null) // { year, month, txs }
+  const [reportLoading, setReportLoading] = useState(false)
 
   useEffect(() => {
     (async () => {
@@ -18,6 +24,19 @@ export default function MonthlyHistory() {
       setLoading(false)
     })()
   }, [])
+
+  const openReport = async (year, month) => {
+    setReportLoading(true)
+    const { start, end } = monthRange(year, month)
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .gte('date', start)
+      .lt('date', end)
+      .order('date', { ascending: false })
+    setReportLoading(false)
+    if (!error) setReport({ year, month, txs: data || [] })
+  }
 
   const months = useMemo(() => {
     const map = new Map()
@@ -145,10 +164,30 @@ export default function MonthlyHistory() {
                     />
                   </div>
                 </div>
+
+                <button
+                  onClick={() => openReport(m.year, m.month)}
+                  disabled={reportLoading}
+                  className="btn-ghost w-full mt-4 text-sm justify-center"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  {reportLoading ? 'Loading…' : 'View Report'}
+                </button>
               </div>
             )
           })}
         </div>
+      )}
+
+      {report && (
+        <ReportModal
+          txs={report.txs}
+          year={report.year}
+          month={report.month}
+          allIncome={allIncome}
+          allExpense={allExpense}
+          onClose={() => setReport(null)}
+        />
       )}
     </div>
   )
