@@ -1,3 +1,8 @@
+// Categories that can never be deleted — core to the app's logic
+export const PROTECTED_CATEGORIES = new Set([
+  'Salary', 'Food', 'Bills', 'Emergency Fund', 'Savings', 'Investments'
+])
+
 export const BUFFER_CARRYOVER_CATEGORY = 'Buffer Carryover'
 export const LEGACY_CASH_ON_HAND_CATEGORY = 'Cash on Hand'
 export const CARRYOVER_INCOME_CATEGORIES = [

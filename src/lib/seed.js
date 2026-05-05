@@ -11,6 +11,7 @@ export async function ensureSeed(userId) {
     const { data: budgets, error: bErr } = await supabase
       .from('budget')
       .select('id')
+      .eq('user_id', userId)
       .limit(1)
 
     if (!bErr && (!budgets || budgets.length === 0)) {
@@ -22,6 +23,7 @@ export async function ensureSeed(userId) {
     const { data: settings, error: sErr } = await supabase
       .from('settings')
       .select('id')
+      .eq('user_id', userId)
       .limit(1)
 
     if (!sErr && (!settings || settings.length === 0)) {

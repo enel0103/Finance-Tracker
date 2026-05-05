@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Receipt, Pencil, Check, X, Tags, Settings2 } from 'lucide-react'
+import { Plus, Trash2, Receipt, Pencil, Check, X, Tags, Settings2, RotateCcw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatPeso, monthRange, todayISO } from '../lib/utils'
 import {
   CATEGORY_BG,
   EXPENSE_CATEGORIES,
-  INCOME_CATEGORIES
+  INCOME_CATEGORIES,
+  PROTECTED_CATEGORIES
 } from '../lib/constants'
 import MonthSelector from '../components/MonthSelector.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
@@ -13,7 +14,7 @@ import { useCategories } from '../contexts/CategoriesContext.jsx'
 
 export default function Transactions() {
   const { user } = useAuth()
-  const { allIncome, allExpense, custom, addCategory, removeCategory } = useCategories()
+  const { allIncome, allExpense, custom, deleted, addCategory, removeCategory, deleteDefault, restoreDefault } = useCategories()
   const isIncomeCat = (cat) => allIncome.includes(cat)
   const now = new Date()
   const [showManage, setShowManage] = useState(false)
@@ -199,8 +200,11 @@ export default function Transactions() {
       {showManage && (
         <ManageCategories
           custom={custom}
+          deleted={deleted}
           addCategory={addCategory}
           removeCategory={removeCategory}
+          deleteDefault={deleteDefault}
+          restoreDefault={restoreDefault}
           onClose={() => setShowManage(false)}
         />
       )}
@@ -506,7 +510,7 @@ export default function Transactions() {
   )
 }
 
-function ManageCategories({ custom, addCategory, removeCategory, onClose }) {
+function ManageCategories({ custom, deleted, addCategory, removeCategory, deleteDefault, restoreDefault, onClose }) {
   const [name, setName] = useState('')
   const [type, setType] = useState('expense')
   const [error, setError] = useState('')
@@ -518,15 +522,26 @@ function ManageCategories({ custom, addCategory, removeCategory, onClose }) {
     setSaving(true)
     const res = await addCategory(name, type)
     setSaving(false)
-    if (!res.ok) {
-      setError(res.error)
-      return
-    }
+    if (!res.ok) { setError(res.error); return }
     setName('')
   }
 
-  const customIncome = custom.filter((c) => c.type === 'income')
-  const customExpense = custom.filter((c) => c.type === 'expense')
+  // Build full lists: defaults (active + hidden) + custom
+  const defaultIncome = INCOME_CATEGORIES.map((n) => ({ name: n, type: 'income', isDefault: true, hidden: deleted.includes(n) }))
+  const defaultExpense = EXPENSE_CATEGORIES.map((n) => ({ name: n, type: 'expense', isDefault: true, hidden: deleted.includes(n) }))
+  const customIncome = custom.filter((c) => c.type === 'income').map((c) => ({ ...c, isDefault: false, hidden: false }))
+  const customExpense = custom.filter((c) => c.type === 'expense').map((c) => ({ ...c, isDefault: false, hidden: false }))
+
+  const incomeItems = [...defaultIncome, ...customIncome]
+  const expenseItems = [...defaultExpense, ...customExpense]
+
+  const handleRemove = (item) => {
+    const msg = item.isDefault
+      ? `Hide "${item.name}"? It won't appear in dropdowns anymore. You can restore it later.`
+      : `Remove "${item.name}"? Existing transactions keep the label but it won't appear in the dropdown.`
+    if (!confirm(msg)) return
+    item.isDefault ? deleteDefault(item.name) : removeCategory(item.name)
+  }
 
   return (
     <div className="card space-y-4">
@@ -541,8 +556,8 @@ function ManageCategories({ custom, addCategory, removeCategory, onClose }) {
       </div>
 
       <p className="text-xs text-slate-500">
-        Default categories can't be removed. You can add your own here — they'll show up in the
-        category dropdown when adding or editing a transaction.
+        Protected categories (Salary, Food, Bills, etc.) can't be removed. Others can be hidden or deleted.
+        Hidden defaults can be restored with the <RotateCcw className="inline w-3 h-3" /> button.
       </p>
 
       <form onSubmit={handleAdd} className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-2">
@@ -555,73 +570,76 @@ function ManageCategories({ custom, addCategory, removeCategory, onClose }) {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <select
-          className="input sm:w-36"
-          value={type}
-          onChange={(e) => setType(e.target.value)}
-        >
+        <select className="input sm:w-36" value={type} onChange={(e) => setType(e.target.value)}>
           <option value="expense">Expense</option>
           <option value="income">Income</option>
         </select>
         <button type="submit" disabled={saving} className="btn-primary">
-          <Plus className="w-4 h-4" />
-          Add
+          <Plus className="w-4 h-4" /> Add
         </button>
       </form>
 
-      {error && (
-        <div className="text-sm text-expense bg-expense/10 px-3 py-2 rounded-lg">{error}</div>
-      )}
+      {error && <div className="text-sm text-expense bg-expense/10 px-3 py-2 rounded-lg">{error}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <CategoryColumn
-          title="Custom income"
-          items={customIncome}
-          onRemove={removeCategory}
-          tone="income"
-        />
-        <CategoryColumn
-          title="Custom expenses"
-          items={customExpense}
-          onRemove={removeCategory}
-          tone="expense"
-        />
+        <CategoryColumn title="Income" items={incomeItems} onRemove={handleRemove} onRestore={restoreDefault} tone="income" />
+        <CategoryColumn title="Expenses" items={expenseItems} onRemove={handleRemove} onRestore={restoreDefault} tone="expense" />
       </div>
     </div>
   )
 }
 
-function CategoryColumn({ title, items, onRemove, tone }) {
+function CategoryColumn({ title, items, onRemove, onRestore, tone }) {
   return (
     <div>
       <h3 className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2">{title}</h3>
-      {items.length === 0 ? (
-        <p className="text-xs text-slate-400 italic">None yet.</p>
-      ) : (
-        <ul className="space-y-1.5">
-          {items.map((c) => (
+      <ul className="space-y-1.5">
+        {items.map((c) => {
+          const isProtected = PROTECTED_CATEGORIES.has(c.name)
+          return (
             <li
               key={c.name}
-              className="flex items-center justify-between rounded-lg bg-slate-100 dark:bg-slate-800/60 px-3 py-1.5"
+              className={`flex items-center justify-between rounded-lg px-3 py-1.5 ${
+                c.hidden
+                  ? 'bg-slate-50 dark:bg-slate-800/30 opacity-50'
+                  : 'bg-slate-100 dark:bg-slate-800/60'
+              }`}
             >
-              <span className={`text-sm ${tone === 'income' ? 'text-income' : 'text-expense'}`}>
-                {c.name}
-              </span>
-              <button
-                onClick={() => {
-                  if (confirm(`Remove "${c.name}"? Existing transactions in this category will keep the label but the option won't appear in the dropdown anymore.`)) {
-                    onRemove(c.name)
-                  }
-                }}
-                className="p-1 rounded text-slate-400 hover:text-expense"
-                aria-label={`Remove ${c.name}`}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className={`text-sm truncate ${c.hidden ? 'line-through text-slate-400' : tone === 'income' ? 'text-income' : 'text-expense'}`}>
+                  {c.name}
+                </span>
+                {isProtected && (
+                  <span className="text-[9px] text-slate-400 border border-slate-300 dark:border-slate-600 rounded px-1">lock</span>
+                )}
+                {!c.isDefault && (
+                  <span className="text-[9px] text-slate-400 border border-slate-300 dark:border-slate-600 rounded px-1">custom</span>
+                )}
+              </div>
+              {c.hidden ? (
+                <button
+                  onClick={() => onRestore(c.name)}
+                  className="p-1 rounded text-slate-400 hover:text-emerald-500"
+                  aria-label={`Restore ${c.name}`}
+                  title="Restore"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              ) : !isProtected ? (
+                <button
+                  onClick={() => onRemove(c)}
+                  className="p-1 rounded text-slate-400 hover:text-expense"
+                  aria-label={`Remove ${c.name}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <div className="w-6" />
+              )}
             </li>
-          ))}
-        </ul>
-      )}
+          )
+        })}
+      </ul>
     </div>
   )
 }
