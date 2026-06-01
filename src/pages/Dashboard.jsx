@@ -302,10 +302,10 @@ export default function Dashboard() {
         />
         <SummaryCard
           label="Buffer"
-          sublabel="Income − Expenses (leftover)"
-          value={totals.newBuffer}
+          sublabel="Available − Expenses (remaining)"
+          value={totals.net}
           icon={<PiggyBank className="w-5 h-5" />}
-          accent={totals.newBuffer >= 0 ? 'text-emerald-500 bg-emerald-500/10' : 'text-expense bg-expense/10'}
+          accent={totals.net >= 0 ? 'text-emerald-500 bg-emerald-500/10' : 'text-expense bg-expense/10'}
           highlight
         />
       </div>
