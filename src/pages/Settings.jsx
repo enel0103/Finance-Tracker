@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { User, Mail, Check, Lock, Eye, EyeOff, Download, Smartphone } from 'lucide-react'
+import { User, Mail, Check, Lock, Eye, EyeOff, Download, Smartphone, RefreshCw } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { supabase } from '../lib/supabase'
 
@@ -7,9 +7,10 @@ export default function Settings() {
   const { user, updateUsername } = useAuth()
   const [installPrompt, setInstallPrompt] = useState(null)
   const [isInstalled, setIsInstalled] = useState(false)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [swReg, setSwReg] = useState(null)
 
   useEffect(() => {
-    // Check if already installed as PWA
     if (window.matchMedia('(display-mode: standalone)').matches) {
       setIsInstalled(true)
     }
@@ -20,8 +21,37 @@ export default function Settings() {
     }
     window.addEventListener('beforeinstallprompt', handler)
     window.addEventListener('appinstalled', () => setIsInstalled(true))
+
+    // Check for SW updates
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistration().then((reg) => {
+        if (!reg) return
+        setSwReg(reg)
+        reg.update()
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing
+          if (!newWorker) return
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              setUpdateAvailable(true)
+            }
+          })
+        })
+        if (reg.waiting && navigator.serviceWorker.controller) {
+          setUpdateAvailable(true)
+        }
+      })
+    }
+
     return () => window.removeEventListener('beforeinstallprompt', handler)
   }, [])
+
+  const handleUpdate = () => {
+    if (swReg?.waiting) {
+      swReg.waiting.postMessage({ type: 'SKIP_WAITING' })
+    }
+    window.location.reload()
+  }
 
   const handleInstall = async () => {
     if (!installPrompt) return
@@ -92,6 +122,26 @@ export default function Settings() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Account Settings</h1>
         <p className="text-sm text-slate-500">Manage your profile and password</p>
+      </div>
+
+      {/* Update app */}
+      <div className="card flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <RefreshCw className="w-5 h-5 text-slate-400 flex-shrink-0" />
+          <div>
+            <div className="text-sm font-medium">App version</div>
+            <div className="text-xs text-slate-500">
+              {updateAvailable ? 'A new version is ready to install' : 'You\'re on the latest version'}
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={handleUpdate}
+          className={`btn flex-shrink-0 text-sm ${updateAvailable ? 'btn-primary' : 'btn-ghost'}`}
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          {updateAvailable ? 'Update now' : 'Check for update'}
+        </button>
       </div>
 
       {/* Install app */}

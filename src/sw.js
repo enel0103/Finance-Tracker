@@ -11,6 +11,11 @@ registerRoute(
   new NetworkFirst({ cacheName: 'supabase-cache', networkTimeoutSeconds: 5 })
 )
 
+// Allow the Settings page to trigger an immediate SW update
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting()
+})
+
 // Handle push notifications
 self.addEventListener('push', (event) => {
   if (!event.data) return
