@@ -21,7 +21,7 @@ export default function Layout() {
   return (
     <div className="min-h-screen flex">
       {/* Sidebar (desktop) */}
-      <aside className="hidden md:flex md:w-64 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
+      <aside className="hidden md:flex md:w-64 flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 h-screen">
         <div className="px-6 py-6 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
             <Wallet2 className="w-5 h-5 text-white" />
