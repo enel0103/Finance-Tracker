@@ -157,27 +157,40 @@ export default function Dashboard() {
       }
     })
 
+    // Walk months in chronological order, tracking one running pool of
+    // unclaimed leftover. Each month ADDS its generated buffer (income minus
+    // expenses — spending is already netted in here) and SUBTRACTS whatever
+    // was claimed (pulled forward into that month). The pool never goes below
+    // zero. This avoids the old double-counting that shrank the buffer on
+    // every carryover.
+    const ordered = [...map.values()].sort((a, b) => a.index - b.index)
+    let pool = 0
     let allGenerated = 0
-    let allClaimed = 0
-    let pastGenerated = 0
-    let claimedThroughSelected = 0
+    let availableFromPast = 0
     let selectedGenerated = 0
     let selectedClaimed = 0
 
-    map.forEach((stat) => {
+    for (const stat of ordered) {
       allGenerated += stat.generated
-      allClaimed += stat.claimed
-      if (stat.index < selectedIndex) pastGenerated += stat.generated
-      if (stat.index <= selectedIndex) claimedThroughSelected += stat.claimed
       if (stat.index === selectedIndex) {
         selectedGenerated = stat.generated
         selectedClaimed = stat.claimed
+        availableFromPast = pool // pool right before this month consumes it
       }
-    })
+      pool += stat.generated
+      pool -= stat.claimed
+      if (pool < 0) pool = 0
+    }
+
+    // If the selected month has no transactions yet, the snapshot above never
+    // fired — all past leftover is available to pull in.
+    if (!map.has(`${year}-${month}`)) availableFromPast = pool
 
     return {
-      availableFromPast: pastGenerated - claimedThroughSelected,
-      allTimeAvailable: allGenerated - allClaimed,
+      // True unclaimed leftover you can still pull into the selected month.
+      availableFromPast,
+      // All-time real leftover (your actual remaining money across all months).
+      allTimeAvailable: allGenerated,
       selectedGenerated,
       selectedClaimed
     }
@@ -328,7 +341,7 @@ export default function Dashboard() {
                   strong
                 />
                 <BufferStat
-                  label="All-time unclaimed"
+                  label="All-time leftover"
                   value={bufferSummary.allTimeAvailable}
                 />
                 <BufferStat
