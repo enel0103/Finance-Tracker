@@ -145,32 +145,27 @@ function LoanForm({ initial, onSave, onCancel }) {
         </div>
       </div>
 
-      {/* Deduct from money toggle — only on new loans (linked transactions
-          make changing this after the fact ambiguous). */}
-      {!isEditing ? (
-        <label className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-slate-700 p-3 cursor-pointer">
-          <input
-            type="checkbox"
-            className="mt-0.5 h-4 w-4 accent-emerald-500"
-            checked={deduct}
-            onChange={(e) => setDeduct(e.target.checked)}
-          />
-          <span className="text-sm">
-            <span className="font-medium">Deduct from my money</span>
-            <span className="block text-xs text-slate-500 mt-0.5">
-              Records a <span className="font-medium">Loan</span> expense on the date lent so it lowers your
-              available money. When marked paid, the amount is added back as income.
-              Uncheck to just track it here without touching your transactions.
-            </span>
+      {/* Deduct-from-money toggle. Editable for both new and existing loans —
+          toggling it on an existing loan creates/removes the linked Loan
+          expense transaction (handled in updateLoan). Disabled once settled,
+          since the repayment income is already recorded. */}
+      <label className={`flex items-start gap-3 rounded-lg border border-slate-200 dark:border-slate-700 p-3 ${initial?.is_settled ? 'opacity-60' : 'cursor-pointer'}`}>
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-emerald-500"
+          checked={deduct}
+          disabled={initial?.is_settled}
+          onChange={(e) => setDeduct(e.target.checked)}
+        />
+        <span className="text-sm">
+          <span className="font-medium">Deduct from my money</span>
+          <span className="block text-xs text-slate-500 mt-0.5">
+            {initial?.is_settled
+              ? 'Already settled — change can\'t be applied to a paid loan.'
+              : <>Records a <span className="font-medium">Loan</span> expense on the date lent so it lowers your available money. When marked paid, the amount is added back as income. Uncheck to just track it here without touching your transactions.</>}
           </span>
-        </label>
-      ) : (
-        <p className="text-xs text-slate-500">
-          {initial.deduct
-            ? 'This loan is linked to your money — a Loan expense was recorded when lent.'
-            : 'This loan is tracked here only and not part of your transactions.'}
-        </p>
-      )}
+        </span>
+      </label>
 
       <div className="flex gap-2 justify-end">
         <button type="button" onClick={onCancel} className="btn-ghost">
@@ -248,11 +243,39 @@ export default function Loans() {
     loadLoans()
   }
 
-  const updateLoan = async (id, fields) => {
-    // `deduct` and the linked transactions are managed by add/settle/delete,
-    // so don't let an edit silently change them — strip deduct from the update.
-    const { deduct, ...safe } = fields
-    const { error } = await supabase.from('loans').update(safe).eq('id', id).eq('user_id', user.id)
+  const updateLoan = async (id, fields, loan) => {
+    let lend_tx_id = loan.lend_tx_id
+
+    // Settled loans: never touch transactions (repayment already recorded).
+    if (!loan.is_settled) {
+      const wasDeducting = loan.deduct
+      const nowDeducting = fields.deduct
+      const lendNote = `Lent to ${fields.borrower}${fields.notes ? ` — ${fields.notes}` : ''}`
+
+      if (!wasDeducting && nowDeducting) {
+        // OFF -> ON: create the Loan expense now.
+        const { data: tx, error: txErr } = await supabase
+          .from('transactions')
+          .insert({ date: fields.date_lent, category: LOAN_CATEGORY, income: 0, expense: fields.amount, notes: lendNote, user_id: user.id })
+          .select('id').single()
+        if (txErr) { alert('Failed to record loan expense: ' + txErr.message); return }
+        lend_tx_id = tx.id
+      } else if (wasDeducting && !nowDeducting) {
+        // ON -> OFF: remove the linked expense.
+        if (loan.lend_tx_id) await supabase.from('transactions').delete().eq('id', loan.lend_tx_id).eq('user_id', user.id)
+        lend_tx_id = null
+      } else if (wasDeducting && nowDeducting && loan.lend_tx_id) {
+        // Still deducting: keep the expense in sync with amount/date/notes.
+        await supabase.from('transactions')
+          .update({ date: fields.date_lent, expense: fields.amount, notes: lendNote })
+          .eq('id', loan.lend_tx_id).eq('user_id', user.id)
+      }
+    }
+
+    const { error } = await supabase
+      .from('loans')
+      .update({ ...fields, lend_tx_id })
+      .eq('id', id).eq('user_id', user.id)
     if (!error) { setEditingId(null); loadLoans() }
   }
 
@@ -441,7 +464,7 @@ export default function Loans() {
                   <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">Editing</p>
                   <LoanForm
                     initial={loan}
-                    onSave={(fields) => updateLoan(loan.id, fields)}
+                    onSave={(fields) => updateLoan(loan.id, fields, loan)}
                     onCancel={() => setEditingId(null)}
                   />
                 </>
