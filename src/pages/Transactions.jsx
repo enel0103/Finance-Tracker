@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, Receipt, Pencil, Check, X, Tags, Settings2, RotateCcw, FileText } from 'lucide-react'
+import { Plus, Trash2, Receipt, Pencil, Check, X, Tags, Settings2, RotateCcw, FileText, CheckSquare } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatPeso, monthRange, monthLabel, todayISO } from '../lib/utils'
 import {
@@ -34,6 +34,9 @@ export default function Transactions() {
   const [saving, setSaving] = useState(false)
 
   const [showReport, setShowReport] = useState(false)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState(() => new Set())
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [editDraft, setEditDraft] = useState({
     date: '',
@@ -70,6 +73,8 @@ export default function Transactions() {
 
   useEffect(() => {
     load()
+    // Selected IDs belong to the previous month's list — clear on month change.
+    setSelectedIds(new Set())
   }, [year, month])
 
   useEffect(() => {
@@ -120,6 +125,44 @@ export default function Transactions() {
       alert('Failed to delete: ' + error.message)
       return
     }
+    load()
+  }
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleSelectAll = () => {
+    setSelectedIds((prev) =>
+      prev.size === txs.length ? new Set() : new Set(txs.map((t) => t.id))
+    )
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return
+    if (!confirm(`Delete ${selectedIds.size} selected transaction${selectedIds.size > 1 ? 's' : ''}? This can't be undone.`)) return
+    setBulkDeleting(true)
+    const ids = [...selectedIds]
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .in('id', ids)
+      .eq('user_id', user.id)
+    setBulkDeleting(false)
+    if (error) {
+      alert('Failed to delete: ' + error.message)
+      return
+    }
+    exitSelectMode()
     load()
   }
 
@@ -190,6 +233,14 @@ export default function Transactions() {
           >
             <Tags className="w-4 h-4" />
             <span className="hidden sm:inline">Categories</span>
+          </button>
+          <button
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            className="btn-ghost"
+            title="Select multiple"
+          >
+            <CheckSquare className="w-4 h-4" />
+            <span className="hidden sm:inline">{selectMode ? 'Cancel' : 'Select'}</span>
           </button>
           <button
             onClick={() => {
@@ -287,6 +338,39 @@ export default function Transactions() {
         </form>
       )}
 
+      {/* Selection action bar */}
+      {selectMode && txs.length > 0 && (
+        <div className="card flex flex-wrap items-center justify-between gap-3 border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-500/5">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={toggleSelectAll}
+              className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200"
+            >
+              <span className={`w-4 h-4 rounded border flex items-center justify-center ${
+                selectedIds.size === txs.length
+                  ? 'bg-emerald-500 border-emerald-500'
+                  : 'border-slate-400 dark:border-slate-600'
+              }`}>
+                {selectedIds.size === txs.length && <Check className="w-3 h-3 text-white" />}
+              </span>
+              {selectedIds.size === txs.length ? 'Deselect all' : 'Select all'}
+            </button>
+            <span className="text-sm text-slate-500">{selectedIds.size} selected</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={exitSelectMode} className="btn-ghost text-sm">Cancel</button>
+            <button
+              onClick={handleBulkDelete}
+              disabled={selectedIds.size === 0 || bulkDeleting}
+              className="btn bg-expense text-white hover:bg-expense/90 text-sm disabled:opacity-50"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              {bulkDeleting ? 'Deleting…' : `Delete${selectedIds.size > 0 ? ` (${selectedIds.size})` : ''}`}
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="card overflow-hidden p-0">
         {loading ? (
           <div className="p-6 text-sm text-slate-500">Loading…</div>
@@ -303,6 +387,7 @@ export default function Transactions() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500">
                   <tr>
+                    {selectMode && <th className="w-10 px-4 py-3"></th>}
                     <th className="text-left px-4 py-3 font-medium">Date</th>
                     <th className="text-left px-4 py-3 font-medium">Category</th>
                     <th className="text-right px-4 py-3 font-medium">Income</th>
@@ -378,8 +463,22 @@ export default function Transactions() {
                         </tr>
                       )
                     }
+                    const isSelected = selectedIds.has(t.id)
                     return (
-                      <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
+                      <tr
+                        key={t.id}
+                        className={`hover:bg-slate-50 dark:hover:bg-slate-800/30 ${selectMode ? 'cursor-pointer' : ''} ${isSelected ? 'bg-emerald-50/60 dark:bg-emerald-500/10' : ''}`}
+                        onClick={selectMode ? () => toggleSelect(t.id) : undefined}
+                      >
+                        {selectMode && (
+                          <td className="px-4 py-3">
+                            <span className={`w-4 h-4 rounded border flex items-center justify-center ${
+                              isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-slate-400 dark:border-slate-600'
+                            }`}>
+                              {isSelected && <Check className="w-3 h-3 text-white" />}
+                            </span>
+                          </td>
+                        )}
                         <td className="px-4 py-3 whitespace-nowrap">
                           {new Date(t.date).toLocaleDateString('en-US', {
                             month: 'short', day: 'numeric'
@@ -400,20 +499,24 @@ export default function Transactions() {
                           {t.notes || '—'}
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <button
-                            onClick={() => startEdit(t)}
-                            className="p-1.5 rounded text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10"
-                            aria-label="Edit"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(t.id)}
-                            className="p-1.5 rounded text-slate-400 hover:text-expense hover:bg-expense/10"
-                            aria-label="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {!selectMode && (
+                            <>
+                              <button
+                                onClick={() => startEdit(t)}
+                                className="p-1.5 rounded text-slate-400 hover:text-emerald-500 hover:bg-emerald-500/10"
+                                aria-label="Edit"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDelete(t.id)}
+                                className="p-1.5 rounded text-slate-400 hover:text-expense hover:bg-expense/10"
+                                aria-label="Delete"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </td>
                       </tr>
                     )
@@ -482,8 +585,20 @@ export default function Transactions() {
                   )
                 }
                 const isIncome = Number(t.income) > 0
+                const isSelected = selectedIds.has(t.id)
                 return (
-                  <li key={t.id} className="p-4 flex items-start gap-3">
+                  <li
+                    key={t.id}
+                    className={`p-4 flex items-start gap-3 ${selectMode ? 'cursor-pointer' : ''} ${isSelected ? 'bg-emerald-50/60 dark:bg-emerald-500/10' : ''}`}
+                    onClick={selectMode ? () => toggleSelect(t.id) : undefined}
+                  >
+                    {selectMode && (
+                      <span className={`mt-0.5 w-5 h-5 flex-shrink-0 rounded border flex items-center justify-center ${
+                        isSelected ? 'bg-emerald-500 border-emerald-500' : 'border-slate-400 dark:border-slate-600'
+                      }`}>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                      </span>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <span className={`pill ${CATEGORY_BG[t.category] || 'bg-slate-200 text-slate-700'}`}>
@@ -499,22 +614,24 @@ export default function Transactions() {
                             month: 'short', day: 'numeric', year: 'numeric'
                           })}
                         </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => startEdit(t)}
-                            className="p-1 rounded text-slate-400 hover:text-emerald-500"
-                            aria-label="Edit"
-                          >
-                            <Pencil className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(t.id)}
-                            className="p-1 rounded text-slate-400 hover:text-expense"
-                            aria-label="Delete"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                        {!selectMode && (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => startEdit(t)}
+                              className="p-1 rounded text-slate-400 hover:text-emerald-500"
+                              aria-label="Edit"
+                            >
+                              <Pencil className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDelete(t.id)}
+                              className="p-1 rounded text-slate-400 hover:text-expense"
+                              aria-label="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                       {t.notes && (
                         <div className="text-xs text-slate-500 mt-1 truncate">{t.notes}</div>
