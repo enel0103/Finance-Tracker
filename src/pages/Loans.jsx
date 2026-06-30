@@ -276,7 +276,8 @@ export default function Loans() {
       .from('loans')
       .update({ ...fields, lend_tx_id })
       .eq('id', id).eq('user_id', user.id)
-    if (!error) { setEditingId(null); loadLoans() }
+    if (error) { alert('Failed to save loan: ' + error.message); return }
+    setEditingId(null); loadLoans()
   }
 
   const deleteLoan = async (loan) => {
@@ -286,7 +287,8 @@ export default function Loans() {
     if (txIds.length) {
       await supabase.from('transactions').delete().in('id', txIds).eq('user_id', user.id)
     }
-    await supabase.from('loans').delete().eq('id', loan.id).eq('user_id', user.id)
+    const { error } = await supabase.from('loans').delete().eq('id', loan.id).eq('user_id', user.id)
+    if (error) { alert('Failed to delete loan: ' + error.message); return }
     loadLoans()
   }
 
@@ -315,8 +317,10 @@ export default function Loans() {
       .from('loans')
       .update({ is_settled: true, settled_at: settledAt, repay_tx_id })
       .eq('id', loan.id).eq('user_id', user.id)
-    if (error && repay_tx_id) {
-      await supabase.from('transactions').delete().eq('id', repay_tx_id)
+    if (error) {
+      if (repay_tx_id) await supabase.from('transactions').delete().eq('id', repay_tx_id)
+      alert('Failed to settle loan: ' + error.message)
+      return
     }
     loadLoans()
   }
@@ -326,9 +330,10 @@ export default function Loans() {
     if (loan.repay_tx_id) {
       await supabase.from('transactions').delete().eq('id', loan.repay_tx_id).eq('user_id', user.id)
     }
-    await supabase.from('loans')
+    const { error } = await supabase.from('loans')
       .update({ is_settled: false, settled_at: null, repay_tx_id: null })
       .eq('id', loan.id).eq('user_id', user.id)
+    if (error) { alert('Failed to un-settle loan: ' + error.message); return }
     loadLoans()
   }
 
