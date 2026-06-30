@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { formatPeso, todayISO } from '../lib/utils.js'
 import { isPushSupported, getSubscriptionStatus, enablePush, disablePush } from '../lib/push.js'
+import { useConfirm } from '../contexts/ConfirmContext.jsx'
 
 const REMIND_PRESETS = [3, 7, 10, 14, 30]
 const LOAN_CATEGORY = 'Loan'
@@ -181,6 +182,7 @@ function LoanForm({ initial, onSave, onCancel }) {
 
 export default function Loans() {
   const { user } = useAuth()
+  const { confirm, notify } = useConfirm()
   const [loans, setLoans] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -226,7 +228,7 @@ export default function Loans() {
         })
         .select('id')
         .single()
-      if (txErr) { alert('Failed to record loan expense: ' + txErr.message); return }
+      if (txErr) { await notify({ title: 'Something went wrong', message: 'Failed to record loan expense: ' + txErr.message, tone: 'danger' }); return }
       lend_tx_id = tx.id
     }
 
@@ -236,7 +238,7 @@ export default function Loans() {
     if (error) {
       // Roll back the transaction we just created so we don't orphan it.
       if (lend_tx_id) await supabase.from('transactions').delete().eq('id', lend_tx_id)
-      alert('Failed to save loan: ' + error.message)
+      await notify({ title: 'Something went wrong', message: 'Failed to save loan: ' + error.message, tone: 'danger' })
       return
     }
     setShowAdd(false)
@@ -258,7 +260,7 @@ export default function Loans() {
           .from('transactions')
           .insert({ date: fields.date_lent, category: LOAN_CATEGORY, income: 0, expense: fields.amount, notes: lendNote, user_id: user.id })
           .select('id').single()
-        if (txErr) { alert('Failed to record loan expense: ' + txErr.message); return }
+        if (txErr) { await notify({ title: 'Something went wrong', message: 'Failed to record loan expense: ' + txErr.message, tone: 'danger' }); return }
         lend_tx_id = tx.id
       } else if (wasDeducting && !nowDeducting) {
         // ON -> OFF: remove the linked expense.
@@ -276,24 +278,35 @@ export default function Loans() {
       .from('loans')
       .update({ ...fields, lend_tx_id })
       .eq('id', id).eq('user_id', user.id)
-    if (error) { alert('Failed to save loan: ' + error.message); return }
+    if (error) { await notify({ title: 'Something went wrong', message: 'Failed to save loan: ' + error.message, tone: 'danger' }); return }
     setEditingId(null); loadLoans()
   }
 
   const deleteLoan = async (loan) => {
-    if (!confirm('Delete this loan record?')) return
+    const ok = await confirm({
+      title: 'Delete loan?',
+      message: `This will permanently remove the loan record for ${loan.borrower}${loan.deduct ? ' and its linked transactions' : ''}.`,
+      confirmText: 'Delete',
+      tone: 'danger',
+    })
+    if (!ok) return
     // Clean up any linked transactions (the money-out and any repayment).
     const txIds = [loan.lend_tx_id, loan.repay_tx_id].filter(Boolean)
     if (txIds.length) {
       await supabase.from('transactions').delete().in('id', txIds).eq('user_id', user.id)
     }
     const { error } = await supabase.from('loans').delete().eq('id', loan.id).eq('user_id', user.id)
-    if (error) { alert('Failed to delete loan: ' + error.message); return }
+    if (error) { await notify({ title: 'Something went wrong', message: 'Failed to delete loan: ' + error.message, tone: 'danger' }); return }
     loadLoans()
   }
 
   const settleLoan = async (loan) => {
-    if (!confirm(`Mark loan to ${loan.borrower} as settled (paid back)?`)) return
+    const ok = await confirm({
+      title: 'Mark as paid?',
+      message: `Mark the loan to ${loan.borrower} as settled (paid back)?${loan.deduct ? ' The amount will be added back to your money.' : ''}`,
+      confirmText: 'Mark paid',
+    })
+    if (!ok) return
     const settledAt = todayISO()
     let repay_tx_id = null
     // If this loan was deducted, add the money back as Loan income on settle date.
@@ -310,7 +323,7 @@ export default function Loans() {
         })
         .select('id')
         .single()
-      if (txErr) { alert('Failed to record repayment: ' + txErr.message); return }
+      if (txErr) { await notify({ title: 'Something went wrong', message: 'Failed to record repayment: ' + txErr.message, tone: 'danger' }); return }
       repay_tx_id = tx.id
     }
     const { error } = await supabase
@@ -319,7 +332,7 @@ export default function Loans() {
       .eq('id', loan.id).eq('user_id', user.id)
     if (error) {
       if (repay_tx_id) await supabase.from('transactions').delete().eq('id', repay_tx_id)
-      alert('Failed to settle loan: ' + error.message)
+      await notify({ title: 'Something went wrong', message: 'Failed to settle loan: ' + error.message, tone: 'danger' })
       return
     }
     loadLoans()
@@ -333,7 +346,7 @@ export default function Loans() {
     const { error } = await supabase.from('loans')
       .update({ is_settled: false, settled_at: null, repay_tx_id: null })
       .eq('id', loan.id).eq('user_id', user.id)
-    if (error) { alert('Failed to un-settle loan: ' + error.message); return }
+    if (error) { await notify({ title: 'Something went wrong', message: 'Failed to un-settle loan: ' + error.message, tone: 'danger' }); return }
     loadLoans()
   }
 

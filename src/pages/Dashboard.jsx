@@ -23,6 +23,7 @@ import {
 import MonthSelector from '../components/MonthSelector.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useCategories } from '../contexts/CategoriesContext.jsx'
+import { useConfirm } from '../contexts/ConfirmContext.jsx'
 
 // Single source of truth for the carryover/buffer math.
 //
@@ -83,6 +84,7 @@ function computeBufferSummary(allTxs, year, month) {
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const { notify } = useConfirm()
   const { allIncome, allExpense } = useCategories()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
@@ -235,11 +237,14 @@ export default function Dashboard() {
         .from('transactions')
         .select('*')
         .order('date', { ascending: false })
-      if (fetchErr) { alert('Could not verify buffer: ' + fetchErr.message); return }
+      if (fetchErr) { await notify({ title: 'Something went wrong', message: 'Could not verify buffer: ' + fetchErr.message, tone: 'danger' }); return }
 
       const available = computeBufferSummary(fresh || [], year, month).availableFromPast
       if (amount > available + 0.009) {
-        alert(`You can only add up to ${formatPeso(available)} from your past buffer.`)
+        await notify({
+          title: 'Amount too high',
+          message: `You can only add up to ${formatPeso(available)} from your past buffer.`,
+        })
         setCarryDraft(available > 0 ? available.toFixed(2) : '')
         await Promise.all([loadTxs(), loadAllTxs()])
         return
@@ -259,7 +264,7 @@ export default function Dashboard() {
         user_id: user.id
       })
       if (error) {
-        alert('Failed to add buffer: ' + error.message)
+        await notify({ title: 'Something went wrong', message: 'Failed to add buffer: ' + error.message, tone: 'danger' })
         return
       }
     } finally {

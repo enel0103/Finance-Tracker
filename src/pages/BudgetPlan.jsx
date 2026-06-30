@@ -6,6 +6,7 @@ import { CATEGORY_BG, isIncomeCategory } from '../lib/constants'
 import MonthSelector from '../components/MonthSelector.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useCategories } from '../contexts/CategoriesContext.jsx'
+import { useConfirm } from '../contexts/ConfirmContext.jsx'
 
 // Suggested allocation ratios (of total monthly income)
 const SUGGESTIONS = {
@@ -23,6 +24,7 @@ const SUGGESTIONS = {
 export default function BudgetPlan() {
   const { user } = useAuth()
   const { allIncome, allExpense } = useCategories()
+  const { confirm, notify } = useConfirm()
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())
@@ -94,7 +96,10 @@ export default function BudgetPlan() {
   const applySuggestions = async () => {
     const totalIncome = allIncome.reduce((sum, cat) => sum + getBudgeted(cat), 0)
     if (!totalIncome) {
-      alert('Set your income target first (e.g. Salary), then tap Suggest.')
+      await notify({
+        title: 'Set income first',
+        message: 'Set your income target first (e.g. Salary), then tap Suggest.',
+      })
       return
     }
     setSuggesting(true)
@@ -110,7 +115,13 @@ export default function BudgetPlan() {
   }
 
   const clearAll = async () => {
-    if (!confirm('Reset all budget amounts to zero?')) return
+    const ok = await confirm({
+      title: 'Reset budget?',
+      message: 'This will set all budget amounts back to zero.',
+      confirmText: 'Reset',
+      tone: 'danger',
+    })
+    if (!ok) return
     await supabase.from('budget').delete().eq('user_id', user.id)
     setBudgets([])
   }

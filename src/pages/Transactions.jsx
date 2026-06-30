@@ -12,9 +12,11 @@ import MonthSelector from '../components/MonthSelector.jsx'
 import ReportModal from '../components/ReportModal.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useCategories } from '../contexts/CategoriesContext.jsx'
+import { useConfirm } from '../contexts/ConfirmContext.jsx'
 
 export default function Transactions() {
   const { user } = useAuth()
+  const { confirm, notify } = useConfirm()
   const { allIncome, allExpense, custom, deleted, addCategory, removeCategory, deleteDefault, restoreDefault } = useCategories()
   const isIncomeCat = (cat) => allIncome.includes(cat)
   const now = new Date()
@@ -104,7 +106,7 @@ export default function Transactions() {
     setSaving(false)
 
     if (error) {
-      alert('Failed to add: ' + error.message)
+      await notify({ title: 'Something went wrong', message: 'Failed to add: ' + error.message, tone: 'danger' })
       return
     }
 
@@ -119,10 +121,16 @@ export default function Transactions() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Delete this transaction?')) return
+    const ok = await confirm({
+      title: 'Delete transaction?',
+      message: 'This will permanently remove this transaction.',
+      confirmText: 'Delete',
+      tone: 'danger',
+    })
+    if (!ok) return
     const { error } = await supabase.from('transactions').delete().eq('id', id)
     if (error) {
-      alert('Failed to delete: ' + error.message)
+      await notify({ title: 'Something went wrong', message: 'Failed to delete: ' + error.message, tone: 'danger' })
       return
     }
     load()
@@ -149,7 +157,13 @@ export default function Transactions() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.size === 0) return
-    if (!confirm(`Delete ${selectedIds.size} selected transaction${selectedIds.size > 1 ? 's' : ''}? This can't be undone.`)) return
+    const ok = await confirm({
+      title: `Delete ${selectedIds.size} transaction${selectedIds.size > 1 ? 's' : ''}?`,
+      message: "This will permanently remove the selected transactions. This can't be undone.",
+      confirmText: 'Delete',
+      tone: 'danger',
+    })
+    if (!ok) return
     setBulkDeleting(true)
     const ids = [...selectedIds]
     const { error } = await supabase
@@ -159,7 +173,7 @@ export default function Transactions() {
       .eq('user_id', user.id)
     setBulkDeleting(false)
     if (error) {
-      alert('Failed to delete: ' + error.message)
+      await notify({ title: 'Something went wrong', message: 'Failed to delete: ' + error.message, tone: 'danger' })
       return
     }
     exitSelectMode()
@@ -198,7 +212,7 @@ export default function Transactions() {
     setSavingEdit(false)
 
     if (error) {
-      alert('Failed to update: ' + error.message)
+      await notify({ title: 'Something went wrong', message: 'Failed to update: ' + error.message, tone: 'danger' })
       return
     }
     setEditingId(null)
@@ -649,6 +663,7 @@ export default function Transactions() {
 }
 
 function ManageCategories({ custom, deleted, addCategory, removeCategory, deleteDefault, restoreDefault, onClose }) {
+  const { confirm } = useConfirm()
   const [name, setName] = useState('')
   const [type, setType] = useState('expense')
   const [error, setError] = useState('')
@@ -673,11 +688,16 @@ function ManageCategories({ custom, deleted, addCategory, removeCategory, delete
   const incomeItems = [...defaultIncome, ...customIncome]
   const expenseItems = [...defaultExpense, ...customExpense]
 
-  const handleRemove = (item) => {
-    const msg = item.isDefault
-      ? `Hide "${item.name}"? It won't appear in dropdowns anymore. You can restore it later.`
-      : `Remove "${item.name}"? Existing transactions keep the label but it won't appear in the dropdown.`
-    if (!confirm(msg)) return
+  const handleRemove = async (item) => {
+    const ok = await confirm({
+      title: item.isDefault ? `Hide "${item.name}"?` : `Remove "${item.name}"?`,
+      message: item.isDefault
+        ? "It won't appear in dropdowns anymore. You can restore it later."
+        : "Existing transactions keep the label but it won't appear in the dropdown.",
+      confirmText: item.isDefault ? 'Hide' : 'Remove',
+      tone: 'danger',
+    })
+    if (!ok) return
     item.isDefault ? deleteDefault(item.name) : removeCategory(item.name)
   }
 

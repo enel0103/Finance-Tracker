@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext.jsx'
+import { useConfirm } from '../contexts/ConfirmContext.jsx'
 import { isPushSupported, getSubscriptionStatus, enablePush, disablePush } from '../lib/push.js'
 import { formatPeso } from '../lib/utils.js'
 
@@ -130,6 +131,7 @@ function BillForm({ initial, onSave, onCancel }) {
 
 export default function Bills() {
   const { user } = useAuth()
+  const { confirm } = useConfirm()
   const [bills, setBills] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -170,7 +172,13 @@ export default function Bills() {
   }
 
   const deleteBill = async (id) => {
-    if (!confirm('Delete this bill?')) return
+    const ok = await confirm({
+      title: 'Delete bill?',
+      message: 'This will permanently remove this bill reminder.',
+      confirmText: 'Delete',
+      tone: 'danger',
+    })
+    if (!ok) return
     await supabase.from('bills').delete().eq('id', id).eq('user_id', user.id)
     loadBills()
   }
