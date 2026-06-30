@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   TrendingUp,
   TrendingDown,
@@ -24,6 +24,55 @@ import MonthSelector from '../components/MonthSelector.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useCategories } from '../contexts/CategoriesContext.jsx'
 
+// Single source of truth for the carryover/buffer math. Walks months in
+// chronological order tracking one running pool of unclaimed leftover: each
+// month ADDS its generated buffer (income minus expenses) and SUBTRACTS what
+// was claimed (pulled forward), clamped at zero. Used by both the dashboard
+// display and the claim validation so they can never disagree.
+function computeBufferSummary(allTxs, year, month) {
+  const selectedIndex = year * 12 + month
+  const map = new Map()
+
+  allTxs.forEach((t) => {
+    const d = new Date(`${t.date}T00:00:00`)
+    const key = `${d.getFullYear()}-${d.getMonth()}`
+    if (!map.has(key)) {
+      map.set(key, { index: d.getFullYear() * 12 + d.getMonth(), generated: 0, claimed: 0 })
+    }
+    const stat = map.get(key)
+    const income = Number(t.income) || 0
+    const expense = Number(t.expense) || 0
+    const isCarryover = income > 0 && CARRYOVER_INCOME_CATEGORIES.includes(t.category)
+    if (isCarryover) stat.claimed += income
+    else stat.generated += income - expense
+  })
+
+  const ordered = [...map.values()].sort((a, b) => a.index - b.index)
+  let pool = 0
+  let allGenerated = 0
+  let availableFromPast = 0
+  let selectedGenerated = 0
+  let selectedClaimed = 0
+
+  for (const stat of ordered) {
+    allGenerated += stat.generated
+    if (stat.index === selectedIndex) {
+      selectedGenerated = stat.generated
+      selectedClaimed = stat.claimed
+      availableFromPast = pool // pool right before this month consumes it
+    }
+    pool += stat.generated
+    pool -= stat.claimed
+    if (pool < 0) pool = 0
+  }
+
+  // If the selected month has no transactions yet, the snapshot never fired —
+  // all past leftover is available to pull in.
+  if (!map.has(`${year}-${month}`)) availableFromPast = pool
+
+  return { availableFromPast, allTimeAvailable: allGenerated, selectedGenerated, selectedClaimed }
+}
+
 export default function Dashboard() {
   const { user } = useAuth()
   const { allIncome, allExpense } = useCategories()
@@ -35,6 +84,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [carryDraft, setCarryDraft] = useState('')
   const [savingCarry, setSavingCarry] = useState(false)
+  const claimingRef = useRef(false)
 
   const [efBase, setEfBase] = useState(0)
   const [efTarget, setEfTarget] = useState(0)
@@ -130,71 +180,10 @@ export default function Dashboard() {
     }
   }, [txs])
 
-  const bufferSummary = useMemo(() => {
-    const selectedIndex = year * 12 + month
-    const map = new Map()
-
-    allTxs.forEach((t) => {
-      const d = new Date(`${t.date}T00:00:00`)
-      const key = `${d.getFullYear()}-${d.getMonth()}`
-      if (!map.has(key)) {
-        map.set(key, {
-          index: d.getFullYear() * 12 + d.getMonth(),
-          generated: 0,
-          claimed: 0
-        })
-      }
-
-      const stat = map.get(key)
-      const income = Number(t.income) || 0
-      const expense = Number(t.expense) || 0
-      const isCarryover = income > 0 && CARRYOVER_INCOME_CATEGORIES.includes(t.category)
-
-      if (isCarryover) {
-        stat.claimed += income
-      } else {
-        stat.generated += income - expense
-      }
-    })
-
-    // Walk months in chronological order, tracking one running pool of
-    // unclaimed leftover. Each month ADDS its generated buffer (income minus
-    // expenses — spending is already netted in here) and SUBTRACTS whatever
-    // was claimed (pulled forward into that month). The pool never goes below
-    // zero. This avoids the old double-counting that shrank the buffer on
-    // every carryover.
-    const ordered = [...map.values()].sort((a, b) => a.index - b.index)
-    let pool = 0
-    let allGenerated = 0
-    let availableFromPast = 0
-    let selectedGenerated = 0
-    let selectedClaimed = 0
-
-    for (const stat of ordered) {
-      allGenerated += stat.generated
-      if (stat.index === selectedIndex) {
-        selectedGenerated = stat.generated
-        selectedClaimed = stat.claimed
-        availableFromPast = pool // pool right before this month consumes it
-      }
-      pool += stat.generated
-      pool -= stat.claimed
-      if (pool < 0) pool = 0
-    }
-
-    // If the selected month has no transactions yet, the snapshot above never
-    // fired — all past leftover is available to pull in.
-    if (!map.has(`${year}-${month}`)) availableFromPast = pool
-
-    return {
-      // True unclaimed leftover you can still pull into the selected month.
-      availableFromPast,
-      // All-time real leftover (your actual remaining money across all months).
-      allTimeAvailable: allGenerated,
-      selectedGenerated,
-      selectedClaimed
-    }
-  }, [allTxs, year, month])
+  const bufferSummary = useMemo(
+    () => computeBufferSummary(allTxs, year, month),
+    [allTxs, year, month]
+  )
 
   useEffect(() => {
     const amount = Math.max(0, bufferSummary.availableFromPast)
@@ -222,33 +211,52 @@ export default function Dashboard() {
 
   const saveCarryover = async (e) => {
     e.preventDefault()
+    // Hard lock: ignore rapid repeat clicks while a claim is already running.
+    if (claimingRef.current) return
+
     const amount = Number(carryDraft)
-    const available = Math.max(0, bufferSummary.availableFromPast)
     if (!amount || amount <= 0) return
-    if (amount > available + 0.009) {
-      alert('That is more than your unclaimed past buffer.')
-      return
-    }
 
-    const current = new Date()
-    const date = current.getFullYear() === year && current.getMonth() === month
-      ? todayISO()
-      : `${year}-${String(month + 1).padStart(2, '0')}-01`
-
+    claimingRef.current = true
     setSavingCarry(true)
-    const { error } = await supabase.from('transactions').insert({
-      date,
-      category: BUFFER_CARRYOVER_CATEGORY,
-      income: amount,
-      expense: 0,
-      notes: 'Added from previous month buffers',
-      user_id: user.id
-    })
-    setSavingCarry(false)
+    try {
+      // Re-validate against FRESH data, not the (possibly stale) in-memory
+      // summary — this is what makes spamming the button safe. We recompute
+      // the true unclaimed leftover from the latest transactions right now.
+      const { data: fresh, error: fetchErr } = await supabase
+        .from('transactions')
+        .select('*')
+        .order('date', { ascending: false })
+      if (fetchErr) { alert('Could not verify buffer: ' + fetchErr.message); return }
 
-    if (error) {
-      alert('Failed to add buffer: ' + error.message)
-      return
+      const available = computeBufferSummary(fresh || [], year, month).availableFromPast
+      if (amount > available + 0.009) {
+        alert(`You can only add up to ${formatPeso(available)} from your past buffer.`)
+        setCarryDraft(available > 0 ? available.toFixed(2) : '')
+        await Promise.all([loadTxs(), loadAllTxs()])
+        return
+      }
+
+      const current = new Date()
+      const date = current.getFullYear() === year && current.getMonth() === month
+        ? todayISO()
+        : `${year}-${String(month + 1).padStart(2, '0')}-01`
+
+      const { error } = await supabase.from('transactions').insert({
+        date,
+        category: BUFFER_CARRYOVER_CATEGORY,
+        income: amount,
+        expense: 0,
+        notes: 'Added from previous month buffers',
+        user_id: user.id
+      })
+      if (error) {
+        alert('Failed to add buffer: ' + error.message)
+        return
+      }
+    } finally {
+      setSavingCarry(false)
+      claimingRef.current = false
     }
 
     await Promise.all([loadTxs(), loadAllTxs()])
