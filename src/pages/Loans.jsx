@@ -9,6 +9,7 @@ import { formatPeso, todayISO } from '../lib/utils.js'
 import { isPushSupported, getSubscriptionStatus, enablePush, disablePush } from '../lib/push.js'
 
 const REMIND_PRESETS = [3, 7, 10, 14, 30]
+const LOAN_CATEGORY = 'Loan'
 
 function daysSince(dateStr) {
   const lent = new Date(dateStr + 'T00:00:00')
@@ -37,7 +38,9 @@ function LoanForm({ initial, onSave, onCancel }) {
     initial ? !REMIND_PRESETS.includes(initial.remind_every_days) : false
   )
   const [notes, setNotes] = useState(initial?.notes || '')
+  const [deduct, setDeduct] = useState(initial?.deduct ?? true)
   const [saving, setSaving] = useState(false)
+  const isEditing = !!initial
 
   const effectiveDays = useCustom ? (Number(customDays) || remindDays) : remindDays
 
@@ -51,6 +54,7 @@ function LoanForm({ initial, onSave, onCancel }) {
       date_lent: dateLent,
       remind_every_days: effectiveDays,
       notes: notes.trim() || null,
+      deduct,
     })
     setSaving(false)
   }
@@ -140,6 +144,34 @@ function LoanForm({ initial, onSave, onCancel }) {
           />
         </div>
       </div>
+
+      {/* Deduct from money toggle — only on new loans (linked transactions
+          make changing this after the fact ambiguous). */}
+      {!isEditing ? (
+        <label className="flex items-start gap-3 rounded-lg border border-slate-200 dark:border-slate-700 p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            className="mt-0.5 h-4 w-4 accent-emerald-500"
+            checked={deduct}
+            onChange={(e) => setDeduct(e.target.checked)}
+          />
+          <span className="text-sm">
+            <span className="font-medium">Deduct from my money</span>
+            <span className="block text-xs text-slate-500 mt-0.5">
+              Records a <span className="font-medium">Loan</span> expense on the date lent so it lowers your
+              available money. When marked paid, the amount is added back as income.
+              Uncheck to just track it here without touching your transactions.
+            </span>
+          </span>
+        </label>
+      ) : (
+        <p className="text-xs text-slate-500">
+          {initial.deduct
+            ? 'This loan is linked to your money — a Loan expense was recorded when lent.'
+            : 'This loan is tracked here only and not part of your transactions.'}
+        </p>
+      )}
+
       <div className="flex gap-2 justify-end">
         <button type="button" onClick={onCancel} className="btn-ghost">
           <X className="w-4 h-4" /> Cancel
@@ -184,29 +216,96 @@ export default function Loans() {
   }, [loadLoans, checkPushStatus])
 
   const addLoan = async (fields) => {
-    const { error } = await supabase.from('loans').insert({ ...fields, user_id: user.id, is_settled: false })
-    if (!error) { setShowAdd(false); loadLoans() }
+    let lend_tx_id = null
+    // If deducting, record a Loan expense on the date lent first.
+    if (fields.deduct) {
+      const { data: tx, error: txErr } = await supabase
+        .from('transactions')
+        .insert({
+          date: fields.date_lent,
+          category: LOAN_CATEGORY,
+          income: 0,
+          expense: fields.amount,
+          notes: `Lent to ${fields.borrower}${fields.notes ? ` — ${fields.notes}` : ''}`,
+          user_id: user.id,
+        })
+        .select('id')
+        .single()
+      if (txErr) { alert('Failed to record loan expense: ' + txErr.message); return }
+      lend_tx_id = tx.id
+    }
+
+    const { error } = await supabase
+      .from('loans')
+      .insert({ ...fields, user_id: user.id, is_settled: false, lend_tx_id })
+    if (error) {
+      // Roll back the transaction we just created so we don't orphan it.
+      if (lend_tx_id) await supabase.from('transactions').delete().eq('id', lend_tx_id)
+      alert('Failed to save loan: ' + error.message)
+      return
+    }
+    setShowAdd(false)
+    loadLoans()
   }
 
   const updateLoan = async (id, fields) => {
-    const { error } = await supabase.from('loans').update(fields).eq('id', id).eq('user_id', user.id)
+    // `deduct` and the linked transactions are managed by add/settle/delete,
+    // so don't let an edit silently change them — strip deduct from the update.
+    const { deduct, ...safe } = fields
+    const { error } = await supabase.from('loans').update(safe).eq('id', id).eq('user_id', user.id)
     if (!error) { setEditingId(null); loadLoans() }
   }
 
-  const deleteLoan = async (id) => {
+  const deleteLoan = async (loan) => {
     if (!confirm('Delete this loan record?')) return
-    await supabase.from('loans').delete().eq('id', id).eq('user_id', user.id)
+    // Clean up any linked transactions (the money-out and any repayment).
+    const txIds = [loan.lend_tx_id, loan.repay_tx_id].filter(Boolean)
+    if (txIds.length) {
+      await supabase.from('transactions').delete().in('id', txIds).eq('user_id', user.id)
+    }
+    await supabase.from('loans').delete().eq('id', loan.id).eq('user_id', user.id)
     loadLoans()
   }
 
   const settleLoan = async (loan) => {
     if (!confirm(`Mark loan to ${loan.borrower} as settled (paid back)?`)) return
-    await supabase.from('loans').update({ is_settled: true, settled_at: todayISO() }).eq('id', loan.id).eq('user_id', user.id)
+    const settledAt = todayISO()
+    let repay_tx_id = null
+    // If this loan was deducted, add the money back as Loan income on settle date.
+    if (loan.deduct) {
+      const { data: tx, error: txErr } = await supabase
+        .from('transactions')
+        .insert({
+          date: settledAt,
+          category: LOAN_CATEGORY,
+          income: loan.amount,
+          expense: 0,
+          notes: `Repaid by ${loan.borrower}`,
+          user_id: user.id,
+        })
+        .select('id')
+        .single()
+      if (txErr) { alert('Failed to record repayment: ' + txErr.message); return }
+      repay_tx_id = tx.id
+    }
+    const { error } = await supabase
+      .from('loans')
+      .update({ is_settled: true, settled_at: settledAt, repay_tx_id })
+      .eq('id', loan.id).eq('user_id', user.id)
+    if (error && repay_tx_id) {
+      await supabase.from('transactions').delete().eq('id', repay_tx_id)
+    }
     loadLoans()
   }
 
   const unsettleLoan = async (loan) => {
-    await supabase.from('loans').update({ is_settled: false, settled_at: null }).eq('id', loan.id).eq('user_id', user.id)
+    // Remove the repayment income transaction if there was one.
+    if (loan.repay_tx_id) {
+      await supabase.from('transactions').delete().eq('id', loan.repay_tx_id).eq('user_id', user.id)
+    }
+    await supabase.from('loans')
+      .update({ is_settled: false, settled_at: null, repay_tx_id: null })
+      .eq('id', loan.id).eq('user_id', user.id)
     loadLoans()
   }
 
@@ -352,6 +451,11 @@ export default function Loans() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-sm">{loan.borrower}</span>
                       <LoanStatusBadge dateLent={loan.date_lent} remindEveryDays={loan.remind_every_days} />
+                      {loan.deduct && (
+                        <span className="pill bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 text-[10px]" title="Deducted from your money">
+                          From wallet
+                        </span>
+                      )}
                     </div>
                     <div className="text-xs text-slate-500 flex flex-wrap gap-x-3 gap-y-0.5">
                       <span className="font-semibold text-amber-500">{formatPeso(loan.amount)}</span>
@@ -377,7 +481,7 @@ export default function Loans() {
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => deleteLoan(loan.id)}
+                      onClick={() => deleteLoan(loan)}
                       className="p-1.5 rounded text-slate-400 hover:text-expense hover:bg-expense/10"
                       aria-label="Delete"
                     >
@@ -422,7 +526,7 @@ export default function Loans() {
                       <X className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => deleteLoan(loan.id)}
+                      onClick={() => deleteLoan(loan)}
                       className="p-1.5 rounded text-slate-400 hover:text-expense hover:bg-expense/10"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

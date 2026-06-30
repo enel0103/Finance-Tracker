@@ -16,11 +16,20 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
       byCategory[cat].entries.push(t)
     })
 
-    const incomeRows = allIncome
+    // Order: active list categories first, then any others that appear in the
+    // data (e.g. a "Loan" repayment income, or a category later deleted). This
+    // guarantees every peso in the month shows up somewhere in the report.
+    const orderedCats = (preferred) => {
+      const seen = new Set(preferred)
+      const extras = Object.keys(byCategory).filter((c) => !seen.has(c))
+      return [...preferred, ...extras]
+    }
+
+    const incomeRows = orderedCats(allIncome)
       .map((cat) => ({ cat, amount: byCategory[cat]?.income || 0, entries: byCategory[cat]?.entries || [] }))
       .filter((r) => r.amount > 0)
 
-    const expenseRows = allExpense
+    const expenseRows = orderedCats(allExpense)
       .map((cat) => ({ cat, amount: byCategory[cat]?.expense || 0, entries: byCategory[cat]?.entries || [] }))
       .filter((r) => r.amount > 0)
 
