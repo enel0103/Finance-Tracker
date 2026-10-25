@@ -13,9 +13,16 @@ const NAV = [
 
 const BOTTOM_NAV = NAV.slice(0, 5)
 
+const headerIconTone = (isActive) =>
+  isActive
+    ? 'text-emerald-600 dark:text-emerald-400'
+    : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'
+
 export default function Layout() {
   const location = useLocation()
-  const title = NAV.find((n) => n.to === location.pathname)?.label || 'Dashboard'
+  const title = location.pathname === '/settings'
+    ? 'Settings'
+    : NAV.find((n) => n.to === location.pathname)?.label || 'Dashboard'
   const { user, signOut } = useAuth()
 
   return (
@@ -92,7 +99,7 @@ export default function Layout() {
 
       {/* Main */}
       <main className="flex-1 flex flex-col min-w-0">
-        <header className="md:hidden sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between">
+        <header className="md:hidden sticky top-0 z-10 bg-white/80 dark:bg-slate-900/80 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-4 pb-2 pt-[calc(0.5rem_+_env(safe-area-inset-top))] flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center">
               <Wallet2 className="w-4 h-4 text-white" />
@@ -102,32 +109,34 @@ export default function Layout() {
               <div className="text-[10px] text-slate-500">Finance Tracker</div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">{title}</span>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-slate-500 mr-1">{title}</span>
+            {/* History doesn't fit in the 5-tab bottom nav, so phones reach it from here.
+                Sign out moved to the Settings page, away from these small icons. */}
+            <NavLink
+              to="/history"
+              className={({ isActive }) => `icon-btn ${headerIconTone(isActive)}`}
+              aria-label="Monthly history"
+            >
+              <History className="w-5 h-5" />
+            </NavLink>
             <NavLink
               to="/settings"
-              className="p-1.5 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+              className={({ isActive }) => `icon-btn ${headerIconTone(isActive)}`}
               aria-label="Settings"
             >
-              <SettingsIcon className="w-4 h-4" />
+              <SettingsIcon className="w-5 h-5" />
             </NavLink>
-            <button
-              onClick={signOut}
-              className="p-1.5 rounded text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Sign out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
           </div>
         </header>
 
-        <div className="flex-1 px-4 md:px-8 py-6 pb-24 md:pb-8 max-w-6xl w-full mx-auto">
+        <div className="flex-1 px-4 md:px-8 py-6 pb-[calc(6rem_+_env(safe-area-inset-bottom))] md:pb-8 max-w-6xl w-full mx-auto">
           <Outlet />
         </div>
       </main>
 
       {/* Bottom nav (mobile) — shows first 5 nav items */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-20 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 pb-[env(safe-area-inset-bottom)]">
         <div className="grid grid-cols-5">
           {BOTTOM_NAV.map(({ to, label, icon: Icon }) => (
             <NavLink

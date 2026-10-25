@@ -213,12 +213,12 @@ export default function Bills() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Bills</h1>
           <p className="text-sm text-slate-500">Track recurring bills and get reminded before they're due</p>
         </div>
-        <button onClick={() => { setShowAdd(true); setEditingId(null) }} className="btn-primary">
+        <button onClick={() => { setShowAdd(true); setEditingId(null) }} className="btn-primary flex-shrink-0 whitespace-nowrap">
           <Plus className="w-4 h-4" /> Add bill
         </button>
       </div>
@@ -331,14 +331,14 @@ export default function Bills() {
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <button
                       onClick={() => { setEditingId(bill.id); setShowAdd(false) }}
-                      className="p-1.5 rounded text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="icon-btn text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
                       aria-label="Edit"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => toggleActive(bill)}
-                      className="p-1.5 rounded text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                      className="icon-btn text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20"
                       aria-label="Pause"
                       title="Pause bill"
                     >
@@ -346,7 +346,7 @@ export default function Bills() {
                     </button>
                     <button
                       onClick={() => deleteBill(bill.id)}
-                      className="p-1.5 rounded text-slate-400 hover:text-expense hover:bg-expense/10"
+                      className="icon-btn text-slate-400 hover:text-expense hover:bg-expense/10"
                       aria-label="Delete"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -380,7 +380,7 @@ export default function Bills() {
                   <div className="flex gap-1">
                     <button
                       onClick={() => toggleActive(bill)}
-                      className="p-1.5 rounded text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                      className="icon-btn text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
                       aria-label="Re-enable"
                       title="Re-enable"
                     >
@@ -388,7 +388,8 @@ export default function Bills() {
                     </button>
                     <button
                       onClick={() => deleteBill(bill.id)}
-                      className="p-1.5 rounded text-slate-400 hover:text-expense hover:bg-expense/10"
+                      className="icon-btn text-slate-400 hover:text-expense hover:bg-expense/10"
+                      aria-label="Delete"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>

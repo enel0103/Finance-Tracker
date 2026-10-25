@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { FileText, X } from 'lucide-react'
 import { formatPeso, monthLabel } from '../lib/utils'
-import { CATEGORY_BG } from '../lib/constants'
+import { categoryBg } from '../lib/constants'
 
 export default function ReportModal({ txs, year, month, allIncome, allExpense, onClose }) {
   const label = monthLabel(year, month)
@@ -96,15 +96,16 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
             <h1 style={{ fontSize: '20px', fontWeight: 700 }}>Finance Report</h1>
             <div className="subtitle" style={{ color: '#64748b', fontSize: '12px', marginBottom: '16px' }}>{label}</div>
 
-            <div className="summary grid grid-cols-3 gap-3 mb-6">
+            {/* One row per total on phones; three columns don't fit six-digit amounts. */}
+            <div className="summary grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-6">
               {[
                 { label: 'Total Income', value: totalIncome, cls: 'text-income' },
                 { label: 'Total Expenses', value: totalExpense, cls: 'text-expense' },
                 { label: 'Buffer', value: totalIncome - totalExpense, cls: totalIncome - totalExpense >= 0 ? 'text-emerald-500' : 'text-expense' },
               ].map(({ label: l, value, cls }) => (
-                <div key={l} className="card !p-3">
+                <div key={l} className="card !p-3 flex items-baseline justify-between gap-2 sm:block">
                   <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">{l}</div>
-                  <div className={`text-lg font-bold mt-1 ${cls}`}>{formatPeso(value)}</div>
+                  <div className={`text-lg font-bold sm:mt-1 tabular-nums ${cls}`}>{formatPeso(value)}</div>
                 </div>
               ))}
             </div>
@@ -125,7 +126,7 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
                       <>
                         <tr key={r.cat} className="bg-slate-50 dark:bg-slate-800/40">
                           <td className="py-1.5 px-2 font-semibold" colSpan={2}>
-                            <span className={`pill text-xs ${CATEGORY_BG[r.cat] || 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>{r.cat}</span>
+                            <span className={`pill text-xs ${categoryBg(r.cat)}`}>{r.cat}</span>
                           </td>
                           <td className="py-1.5 px-2 text-right font-semibold text-income">{formatPeso(r.amount)}</td>
                         </tr>
@@ -165,7 +166,7 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
                       <>
                         <tr key={r.cat} className="bg-slate-50 dark:bg-slate-800/40">
                           <td className="py-1.5 px-2 font-semibold" colSpan={2}>
-                            <span className={`pill text-xs ${CATEGORY_BG[r.cat] || 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>{r.cat}</span>
+                            <span className={`pill text-xs ${categoryBg(r.cat)}`}>{r.cat}</span>
                           </td>
                           <td className="py-1.5 px-2 text-right font-semibold text-expense">{formatPeso(r.amount)}</td>
                         </tr>

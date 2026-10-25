@@ -3,7 +3,7 @@ import { Plus, Trash2, Receipt, Pencil, Check, X, Tags, Settings2, RotateCcw, Fi
 import { supabase } from '../lib/supabase'
 import { formatPeso, monthRange, monthLabel, todayISO } from '../lib/utils'
 import {
-  CATEGORY_BG,
+  categoryBg,
   EXPENSE_CATEGORIES,
   INCOME_CATEGORIES,
   PROTECTED_CATEGORIES
@@ -219,39 +219,47 @@ export default function Transactions() {
     load()
   }
 
+  // Used by the floating button on phones: always opens (never toggles) and
+  // scrolls up, since the form renders at the top of the page.
+  const openAddForm = () => {
+    setForm((prev) => ({ ...prev, date: defaultDateForSelectedMonth() }))
+    setShowForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div className="space-y-6 pb-16 sm:pb-0">
+      {/* Phones: title + tool icons on one line, month selector full-width below.
+          sm and up: title, month selector, then the labelled buttons (wrapping as needed). */}
+      <div className="flex flex-wrap items-start sm:items-center gap-3">
+        <div className="flex-1">
           <h1 className="text-2xl font-bold tracking-tight">Transactions</h1>
           <p className="text-sm text-slate-500">All income and expenses for the selected month</p>
         </div>
-        <div className="flex items-center gap-2">
-          <MonthSelector
-            year={year}
-            month={month}
-            onChange={(y, m) => { setYear(y); setMonth(m) }}
-          />
+        <div className="flex items-center gap-1 sm:gap-2 sm:order-last">
           <button
             onClick={() => setShowReport(true)}
-            className="btn-ghost"
+            className="btn-ghost h-10 sm:h-auto"
             title="Monthly report"
+            aria-label="Monthly report"
           >
             <FileText className="w-4 h-4" />
             <span className="hidden sm:inline">Report</span>
           </button>
           <button
             onClick={() => setShowManage((v) => !v)}
-            className="btn-ghost"
+            className="btn-ghost h-10 sm:h-auto"
             title="Manage categories"
+            aria-label="Manage categories"
           >
             <Tags className="w-4 h-4" />
             <span className="hidden sm:inline">Categories</span>
           </button>
           <button
             onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-            className="btn-ghost"
+            className="btn-ghost h-10 sm:h-auto"
             title="Select multiple"
+            aria-label={selectMode ? 'Cancel selection' : 'Select multiple'}
           >
             <CheckSquare className="w-4 h-4" />
             <span className="hidden sm:inline">{selectMode ? 'Cancel' : 'Select'}</span>
@@ -264,13 +272,30 @@ export default function Transactions() {
               }))
               setShowForm((v) => !v)
             }}
-            className="btn-primary"
+            className="btn-primary hidden sm:inline-flex"
+            aria-label="Add transaction"
           >
             <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">Add</span>
+            <span>Add</span>
           </button>
         </div>
+        <MonthSelector
+          year={year}
+          month={month}
+          onChange={(y, m) => { setYear(y); setMonth(m) }}
+          className="w-full sm:w-auto"
+        />
       </div>
+
+      {!showForm && !selectMode && (
+        <button
+          onClick={openAddForm}
+          className="sm:hidden fixed right-4 bottom-[calc(4.5rem_+_env(safe-area-inset-bottom))] z-30 w-14 h-14 rounded-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white shadow-lg shadow-black/30 flex items-center justify-center transition"
+          aria-label="Add transaction"
+        >
+          <Plus className="w-6 h-6" />
+        </button>
+      )}
 
       {showReport && (
         <ReportModal
@@ -396,8 +421,9 @@ export default function Transactions() {
           </div>
         ) : (
           <>
-            {/* Desktop table */}
-            <div className="hidden md:block overflow-x-auto">
+            {/* Desktop table (lg+). Tablets get the card list: with the sidebar open, a 768px
+                screen leaves ~500px, which pushes the edit/delete column out of view. */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 dark:bg-slate-800/50 text-slate-500">
                   <tr>
@@ -499,7 +525,7 @@ export default function Transactions() {
                           })}
                         </td>
                         <td className="px-4 py-3">
-                          <span className={`pill ${CATEGORY_BG[t.category] || 'bg-slate-200 text-slate-700'}`}>
+                          <span className={`pill ${categoryBg(t.category)}`}>
                             {t.category}
                           </span>
                         </td>
@@ -509,7 +535,7 @@ export default function Transactions() {
                         <td className="px-4 py-3 text-right text-expense font-medium">
                           {Number(t.expense) > 0 ? formatPeso(t.expense) : '—'}
                         </td>
-                        <td className="px-4 py-3 text-slate-500 max-w-xs truncate">
+                        <td className="px-4 py-3 text-slate-500 max-w-[10rem] xl:max-w-xs truncate">
                           {t.notes || '—'}
                         </td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -539,8 +565,8 @@ export default function Transactions() {
               </table>
             </div>
 
-            {/* Mobile list */}
-            <ul className="md:hidden divide-y divide-slate-200 dark:divide-slate-800">
+            {/* Phone + tablet list */}
+            <ul className="lg:hidden divide-y divide-slate-200 dark:divide-slate-800">
               {txs.map((t) => {
                 if (editingId === t.id) {
                   return (
@@ -615,7 +641,7 @@ export default function Transactions() {
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className={`pill ${CATEGORY_BG[t.category] || 'bg-slate-200 text-slate-700'}`}>
+                        <span className={`pill ${categoryBg(t.category)}`}>
                           {t.category}
                         </span>
                         <span className={`font-semibold text-sm ${isIncome ? 'text-income' : 'text-expense'}`}>
@@ -629,17 +655,17 @@ export default function Transactions() {
                           })}
                         </span>
                         {!selectMode && (
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 -my-2 -mr-3">
                             <button
                               onClick={() => startEdit(t)}
-                              className="p-1 rounded text-slate-400 hover:text-emerald-500"
+                              className="icon-btn text-slate-400 hover:text-emerald-500"
                               aria-label="Edit"
                             >
                               <Pencil className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleDelete(t.id)}
-                              className="p-1 rounded text-slate-400 hover:text-expense"
+                              className="icon-btn text-slate-400 hover:text-expense"
                               aria-label="Delete"
                             >
                               <Trash2 className="w-4 h-4" />

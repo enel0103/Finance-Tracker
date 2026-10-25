@@ -16,7 +16,7 @@ import { formatPeso, monthRange, todayISO } from '../lib/utils'
 import {
   BUFFER_CARRYOVER_CATEGORY,
   CARRYOVER_INCOME_CATEGORIES,
-  CATEGORY_BG,
+  categoryBg,
   EXPENSE_CATEGORIES,
   INCOME_CATEGORIES
 } from '../lib/constants'
@@ -427,15 +427,15 @@ export default function Dashboard() {
             </div>
           </div>
           {!editingEf ? (
-            <button onClick={startEditEf} className="btn-ghost !p-2" aria-label="Edit base & target">
+            <button onClick={startEditEf} className="btn-ghost !p-0 icon-btn" aria-label="Edit base & target">
               <Pencil className="w-4 h-4" />
             </button>
           ) : (
             <div className="flex items-center gap-1">
-              <button onClick={saveEf} className="btn-ghost !p-2 text-emerald-500" aria-label="Save">
+              <button onClick={saveEf} className="btn-ghost !p-0 icon-btn text-emerald-500" aria-label="Save">
                 <Check className="w-4 h-4" />
               </button>
-              <button onClick={() => setEditingEf(false)} className="btn-ghost !p-2 text-slate-500" aria-label="Cancel">
+              <button onClick={() => setEditingEf(false)} className="btn-ghost !p-0 icon-btn text-slate-500" aria-label="Cancel">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -507,7 +507,7 @@ export default function Dashboard() {
 
 function SummaryCard({ label, sublabel, value, icon, accent, highlight }) {
   return (
-    <div className={`card ${highlight ? 'ring-1 ring-emerald-500/20' : ''}`}>
+    <div className={`card p-4 sm:p-5 ${highlight ? 'ring-1 ring-emerald-500/20' : ''}`}>
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">{label}</div>
@@ -515,7 +515,9 @@ function SummaryCard({ label, sublabel, value, icon, accent, highlight }) {
         </div>
         <div className={`p-2 rounded-lg ${accent}`}>{icon}</div>
       </div>
-      <div className={`text-2xl font-bold ${value < 0 ? 'text-expense' : ''}`}>
+      {/* Half-width cards on phones: text-2xl overflows them even at five digits,
+          and seven-digit amounts (₱1,000,000.00+) need one size smaller still. */}
+      <div className={`${formatPeso(value).length > 11 ? 'text-lg' : 'text-xl'} sm:text-2xl font-bold tabular-nums ${value < 0 ? 'text-expense' : ''}`}>
         {formatPeso(value)}
       </div>
     </div>
@@ -551,7 +553,7 @@ function CategoryList({ title, rows, loading, type }) {
             return (
               <li key={r.cat}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className={`pill ${CATEGORY_BG[r.cat] || 'bg-slate-200 text-slate-700'}`}>
+                  <span className={`pill ${categoryBg(r.cat)}`}>
                     {r.cat}
                   </span>
                   <span className="font-semibold text-sm">{formatPeso(r.amount)}</span>

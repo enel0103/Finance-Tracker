@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from 'react'
 import { Wallet, Pencil, Check, X, Sparkles, RotateCcw } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatPeso, monthRange } from '../lib/utils'
-import { CATEGORY_BG, isIncomeCategory } from '../lib/constants'
+import { categoryBg, isIncomeCategory } from '../lib/constants'
 import MonthSelector from '../components/MonthSelector.jsx'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { useCategories } from '../contexts/CategoriesContext.jsx'
@@ -277,9 +277,11 @@ function BudgetSection({ title, rows, editingCat, editValue, saving, inputRef,
 
           return (
             <li key={r.cat}>
-              <div className="flex items-center justify-between mb-1.5 gap-2">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span className={`pill flex-shrink-0 ${CATEGORY_BG[r.cat] || 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'}`}>
+              {/* Phones: amounts always get their own right-aligned line so they scan as a
+                  column. sm and up: one line, wrapping (not overlapping) if it doesn't fit. */}
+              <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 mb-1.5">
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <span className={`pill flex-shrink-0 ${categoryBg(r.cat)}`}>
                     {r.cat}
                   </span>
                   {r.budgeted > 0 && !isEditing && (
@@ -297,7 +299,7 @@ function BudgetSection({ title, rows, editingCat, editValue, saving, inputRef,
                   )}
                 </div>
 
-                <div className="flex items-center gap-1.5 flex-shrink-0">
+                <div className="flex items-center justify-end gap-1.5 ml-auto w-full sm:w-auto">
                   {isEditing ? (
                     <>
                       <span className="text-xs text-slate-400">₱</span>
@@ -306,7 +308,7 @@ function BudgetSection({ title, rows, editingCat, editValue, saving, inputRef,
                         type="number"
                         min="0"
                         step="1"
-                        className="input !py-1 !text-sm w-32 text-right"
+                        className="input !py-1 w-32 text-right"
                         value={editValue}
                         onChange={(e) => onEditValue(e.target.value)}
                         onKeyDown={(e) => onKeyDown(e, r.cat)}
@@ -315,14 +317,14 @@ function BudgetSection({ title, rows, editingCat, editValue, saving, inputRef,
                       <button
                         onClick={() => onSave(r.cat)}
                         disabled={saving}
-                        className="p-1.5 rounded text-emerald-500 hover:bg-emerald-500/10"
+                        className="icon-btn text-emerald-500 hover:bg-emerald-500/10"
                         aria-label="Save"
                       >
                         <Check className="w-3.5 h-3.5" />
                       </button>
                       <button
                         onClick={onCancel}
-                        className="p-1.5 rounded text-slate-400 hover:bg-slate-500/10"
+                        className="icon-btn text-slate-400 hover:bg-slate-500/10"
                         aria-label="Cancel"
                       >
                         <X className="w-3.5 h-3.5" />
@@ -336,7 +338,7 @@ function BudgetSection({ title, rows, editingCat, editValue, saving, inputRef,
                       </span>
                       <button
                         onClick={() => onEdit(r.cat)}
-                        className="p-1.5 rounded text-slate-300 hover:text-emerald-500 hover:bg-emerald-500/10 dark:text-slate-600"
+                        className="icon-btn text-slate-300 hover:text-emerald-500 hover:bg-emerald-500/10 dark:text-slate-600"
                         aria-label={`Edit ${r.cat} budget`}
                       >
                         <Pencil className="w-3.5 h-3.5" />

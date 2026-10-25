@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react'
-import { User, Mail, Check, Lock, Eye, EyeOff, Download, Smartphone, RefreshCw } from 'lucide-react'
+import { User, Mail, Check, Lock, Eye, EyeOff, Download, Smartphone, RefreshCw, LogOut } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { supabase } from '../lib/supabase'
 
 export default function Settings() {
-  const { user, updateUsername } = useAuth()
+  const { user, updateUsername, signOut } = useAuth()
   const [installPrompt, setInstallPrompt] = useState(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState(false)
@@ -293,6 +293,15 @@ export default function Settings() {
           </button>
         </div>
       </form>
+
+      {/* Phones have no sidebar; the desktop sign-out button lives there. */}
+      <button
+        onClick={signOut}
+        className="btn-ghost w-full md:hidden border border-slate-200 dark:border-slate-800"
+      >
+        <LogOut className="w-4 h-4" />
+        Sign out
+      </button>
     </div>
   )
 }

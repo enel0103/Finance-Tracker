@@ -80,7 +80,16 @@ export const CATEGORY_BG = {
   Savings: 'bg-savings/10 text-savings',
   'Emergency Fund': 'bg-emerald-500/10 text-emerald-500',
   'Future Wants': 'bg-expense/10 text-expense',
-  Misc: 'bg-expense/10 text-expense'
+  Misc: 'bg-expense/10 text-expense',
+  // Written by the Loans page.
+  Loan: 'bg-amber-500/10 text-amber-500'
+}
+
+// Custom categories have no entry in CATEGORY_BG; this keeps them readable in dark mode.
+export const CATEGORY_BG_FALLBACK = 'bg-slate-500/15 text-slate-600 dark:text-slate-300'
+
+export function categoryBg(cat) {
+  return CATEGORY_BG[cat] || CATEGORY_BG_FALLBACK
 }
 
 export function isIncomeCategory(cat) {

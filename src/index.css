@@ -26,9 +26,14 @@ body {
   .dark .card {
     @apply bg-slate-900 border-slate-800;
   }
+  /* 16px on phones: iOS Safari zooms into any focused field smaller than that. */
   .input {
-    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base sm:text-sm
       focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent;
+  }
+  /* Icon-only buttons: 40px tap target on phones, compact from sm up. */
+  .icon-btn {
+    @apply inline-flex items-center justify-center rounded-lg h-10 w-10 sm:h-8 sm:w-8;
   }
   .dark .input {
     @apply bg-slate-800 border-slate-700 text-slate-100 placeholder-slate-500;
