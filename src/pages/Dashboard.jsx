@@ -9,8 +9,11 @@ import {
   X,
   PiggyBank,
   PlusCircle,
-  Layers
+  Layers,
+  ChevronRight
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import ReportModal from '../components/ReportModal.jsx'
 import { supabase } from '../lib/supabase'
 import { formatPeso, monthRange, todayISO } from '../lib/utils'
 import {
@@ -86,6 +89,8 @@ export default function Dashboard() {
   const { user } = useAuth()
   const { notify } = useConfirm()
   const { allIncome, allExpense } = useCategories()
+  const navigate = useNavigate()
+  const [showSpending, setShowSpending] = useState(false)
   const now = new Date()
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth())
@@ -319,6 +324,10 @@ export default function Dashboard() {
           value={totals.regularIncome}
           icon={<TrendingUp className="w-5 h-5" />}
           accent="text-income bg-income/10"
+          actionLabel="Add income"
+          onClick={() => navigate('/transactions', {
+            state: { quickAdd: { category: 'Salary', year, month } }
+          })}
         />
         <SummaryCard
           label="Available"
@@ -333,6 +342,8 @@ export default function Dashboard() {
           value={totals.expense}
           icon={<TrendingDown className="w-5 h-5" />}
           accent="text-expense bg-expense/10"
+          actionLabel="See breakdown"
+          onClick={() => setShowSpending(true)}
         />
         <SummaryCard
           label="Buffer"
@@ -343,6 +354,18 @@ export default function Dashboard() {
           highlight
         />
       </div>
+
+      {showSpending && (
+        <ReportModal
+          view="expenses"
+          txs={txs}
+          year={year}
+          month={month}
+          allIncome={allIncome}
+          allExpense={allExpense}
+          onClose={() => setShowSpending(false)}
+        />
+      )}
 
       <div className="card">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-5">
@@ -505,9 +528,20 @@ export default function Dashboard() {
   )
 }
 
-function SummaryCard({ label, sublabel, value, icon, accent, highlight }) {
+function SummaryCard({ label, sublabel, value, icon, accent, highlight, onClick, actionLabel }) {
+  // Cards with an onClick render as a real button so they work with keyboard
+  // and screen readers, and get a hover state + "action ›" hint.
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div className={`card p-4 sm:p-5 ${highlight ? 'ring-1 ring-emerald-500/20' : ''}`}>
+    <Tag
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`card p-4 sm:p-5 text-left w-full ${highlight ? 'ring-1 ring-emerald-500/20' : ''} ${
+        onClick
+          ? 'group cursor-pointer transition hover:border-emerald-500/40 hover:shadow-md active:scale-[0.98] focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500'
+          : ''
+      }`}
+    >
       <div className="flex items-center justify-between mb-3">
         <div>
           <div className="text-xs uppercase tracking-wide text-slate-500 font-semibold">{label}</div>
@@ -520,7 +554,13 @@ function SummaryCard({ label, sublabel, value, icon, accent, highlight }) {
       <div className={`${formatPeso(value).length > 11 ? 'text-lg' : 'text-xl'} sm:text-2xl font-bold tabular-nums ${value < 0 ? 'text-expense' : ''}`}>
         {formatPeso(value)}
       </div>
-    </div>
+      {onClick && actionLabel && (
+        <div className="mt-2 flex items-center gap-0.5 text-xs font-medium text-slate-400 group-hover:text-emerald-500 transition-colors">
+          {actionLabel}
+          <ChevronRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+        </div>
+      )}
+    </Tag>
   )
 }
 

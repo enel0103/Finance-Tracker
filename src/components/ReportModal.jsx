@@ -1,10 +1,13 @@
-import { useMemo } from 'react'
+import { Fragment, useMemo } from 'react'
 import { FileText, X } from 'lucide-react'
 import { formatPeso, monthLabel } from '../lib/utils'
 import { categoryBg } from '../lib/constants'
 
-export default function ReportModal({ txs, year, month, allIncome, allExpense, onClose }) {
+// view="expenses" shows only spending, biggest category first with its share
+// of the total. The default "full" view is the original income + expense report.
+export default function ReportModal({ txs, year, month, allIncome, allExpense, onClose, view = 'full' }) {
   const label = monthLabel(year, month)
+  const expensesOnly = view === 'expenses'
 
   const { incomeRows, expenseRows, totalIncome, totalExpense } = useMemo(() => {
     const byCategory = {}
@@ -32,18 +35,37 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
     const expenseRows = orderedCats(allExpense)
       .map((cat) => ({ cat, amount: byCategory[cat]?.expense || 0, entries: byCategory[cat]?.entries || [] }))
       .filter((r) => r.amount > 0)
+    if (expensesOnly) expenseRows.sort((a, b) => b.amount - a.amount)
 
     const totalIncome = incomeRows.reduce((s, r) => s + r.amount, 0)
     const totalExpense = expenseRows.reduce((s, r) => s + r.amount, 0)
 
     return { incomeRows, expenseRows, totalIncome, totalExpense }
-  }, [txs, allIncome, allExpense])
+  }, [txs, allIncome, allExpense, expensesOnly])
+
+  const pctOf = (amount) => (totalExpense > 0 ? `${((amount / totalExpense) * 100).toFixed(1)}%` : '')
+  const summary = expensesOnly
+    ? [
+        { label: 'Total Spent', value: totalExpense, cls: 'text-expense' },
+        { label: 'Categories', text: String(expenseRows.length), cls: '' },
+        {
+          label: 'Biggest',
+          text: expenseRows[0] ? `${expenseRows[0].cat} · ${pctOf(expenseRows[0].amount)}` : '—',
+          cls: ''
+        },
+      ]
+    : [
+        { label: 'Total Income', value: totalIncome, cls: 'text-income' },
+        { label: 'Total Expenses', value: totalExpense, cls: 'text-expense' },
+        { label: 'Buffer', value: totalIncome - totalExpense, cls: totalIncome - totalExpense >= 0 ? 'text-emerald-500' : 'text-expense' },
+      ]
+  const title = expensesOnly ? 'Spending Report' : 'Finance Report'
 
   const handlePrint = () => {
     const printContent = document.getElementById('report-print-area').innerHTML
     const win = window.open('', '_blank')
     win.document.write(`<!DOCTYPE html><html><head>
-      <title>Finance Report – ${label}</title>
+      <title>${title} – ${label}</title>
       <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, sans-serif; font-size: 13px; color: #1e293b; padding: 32px; }
@@ -78,7 +100,7 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
         <div className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-800">
           <div className="flex items-center gap-2">
             <FileText className="w-5 h-5 text-emerald-500" />
-            <h2 className="font-semibold">Monthly Report — {label}</h2>
+            <h2 className="font-semibold">{expensesOnly ? 'Spending' : 'Monthly Report'} — {label}</h2>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={handlePrint} className="btn bg-emerald-600 text-white hover:bg-emerald-700 text-sm">
@@ -93,24 +115,20 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
 
         <div className="p-4 overflow-y-auto max-h-[75vh]">
           <div id="report-print-area">
-            <h1 style={{ fontSize: '20px', fontWeight: 700 }}>Finance Report</h1>
+            <h1 style={{ fontSize: '20px', fontWeight: 700 }}>{title}</h1>
             <div className="subtitle" style={{ color: '#64748b', fontSize: '12px', marginBottom: '16px' }}>{label}</div>
 
             {/* One row per total on phones; three columns don't fit six-digit amounts. */}
             <div className="summary grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3 mb-6">
-              {[
-                { label: 'Total Income', value: totalIncome, cls: 'text-income' },
-                { label: 'Total Expenses', value: totalExpense, cls: 'text-expense' },
-                { label: 'Buffer', value: totalIncome - totalExpense, cls: totalIncome - totalExpense >= 0 ? 'text-emerald-500' : 'text-expense' },
-              ].map(({ label: l, value, cls }) => (
-                <div key={l} className="card !p-3 flex items-baseline justify-between gap-2 sm:block">
+              {summary.map(({ label: l, value, text, cls }) => (
+                <div key={l} className="card !p-3 flex items-baseline justify-between gap-2 sm:block min-w-0">
                   <div className="text-[10px] uppercase tracking-wide text-slate-400 font-semibold">{l}</div>
-                  <div className={`text-lg font-bold sm:mt-1 tabular-nums ${cls}`}>{formatPeso(value)}</div>
+                  <div className={`text-lg font-bold sm:mt-1 tabular-nums truncate ${cls}`}>{text ?? formatPeso(value)}</div>
                 </div>
               ))}
             </div>
 
-            {incomeRows.length > 0 && (
+            {!expensesOnly && incomeRows.length > 0 && (
               <div className="mb-6">
                 <h3 className="text-xs uppercase tracking-wide text-slate-500 font-semibold mb-2 pb-1 border-b border-slate-200 dark:border-slate-700">Income</h3>
                 <table className="w-full text-sm">
@@ -123,8 +141,8 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
                   </thead>
                   <tbody>
                     {incomeRows.map((r) => (
-                      <>
-                        <tr key={r.cat} className="bg-slate-50 dark:bg-slate-800/40">
+                      <Fragment key={r.cat}>
+                        <tr className="bg-slate-50 dark:bg-slate-800/40">
                           <td className="py-1.5 px-2 font-semibold" colSpan={2}>
                             <span className={`pill text-xs ${categoryBg(r.cat)}`}>{r.cat}</span>
                           </td>
@@ -139,7 +157,7 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
                             <td className="py-1 px-2 text-right text-xs">{formatPeso(e.income)}</td>
                           </tr>
                         ))}
-                      </>
+                      </Fragment>
                     ))}
                     <tr className="border-t-2 border-slate-200 dark:border-slate-700 font-bold">
                       <td className="py-2 px-2" colSpan={2}>Total Income</td>
@@ -163,10 +181,13 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
                   </thead>
                   <tbody>
                     {expenseRows.map((r) => (
-                      <>
-                        <tr key={r.cat} className="bg-slate-50 dark:bg-slate-800/40">
+                      <Fragment key={r.cat}>
+                        <tr className="bg-slate-50 dark:bg-slate-800/40">
                           <td className="py-1.5 px-2 font-semibold" colSpan={2}>
                             <span className={`pill text-xs ${categoryBg(r.cat)}`}>{r.cat}</span>
+                            {expensesOnly && (
+                              <span className="ml-2 text-xs font-medium text-slate-400 tabular-nums">{pctOf(r.amount)}</span>
+                            )}
                           </td>
                           <td className="py-1.5 px-2 text-right font-semibold text-expense">{formatPeso(r.amount)}</td>
                         </tr>
@@ -179,7 +200,7 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
                             <td className="py-1 px-2 text-right text-xs">{formatPeso(e.expense)}</td>
                           </tr>
                         ))}
-                      </>
+                      </Fragment>
                     ))}
                     <tr className="border-t-2 border-slate-200 dark:border-slate-700 font-bold">
                       <td className="py-2 px-2" colSpan={2}>Total Expenses</td>
@@ -190,8 +211,10 @@ export default function ReportModal({ txs, year, month, allIncome, allExpense, o
               </div>
             )}
 
-            {txs.length === 0 && (
-              <div className="text-sm text-slate-500 text-center py-8">No transactions for this month.</div>
+            {(expensesOnly ? expenseRows.length === 0 : txs.length === 0) && (
+              <div className="text-sm text-slate-500 text-center py-8">
+                {expensesOnly ? 'No expenses for this month.' : 'No transactions for this month.'}
+              </div>
             )}
 
             <div className="footer text-xs text-slate-400 text-center mt-6">

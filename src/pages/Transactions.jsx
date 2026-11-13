@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, Trash2, Receipt, Pencil, Check, X, Tags, Settings2, RotateCcw, FileText, CheckSquare } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { formatPeso, monthRange, monthLabel, todayISO } from '../lib/utils'
@@ -20,20 +21,33 @@ export default function Transactions() {
   const { allIncome, allExpense, custom, deleted, addCategory, removeCategory, deleteDefault, restoreDefault } = useCategories()
   const isIncomeCat = (cat) => allIncome.includes(cat)
   const now = new Date()
+  const location = useLocation()
+  const navigate = useNavigate()
+  // Set by the Dashboard's Income card: open the add form on that month with
+  // the category picked, so only the amount is left to type.
+  const quickAdd = location.state?.quickAdd
   const [showManage, setShowManage] = useState(false)
-  const [year, setYear] = useState(now.getFullYear())
-  const [month, setMonth] = useState(now.getMonth())
+  const [year, setYear] = useState(quickAdd?.year ?? now.getFullYear())
+  const [month, setMonth] = useState(quickAdd?.month ?? now.getMonth())
   const [txs, setTxs] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
+  const [showForm, setShowForm] = useState(!!quickAdd)
 
   const [form, setForm] = useState({
     date: todayISO(),
-    category: 'Salary',
+    category: quickAdd?.category || 'Salary',
     amount: '',
     notes: ''
   })
   const [saving, setSaving] = useState(false)
+  const amountRef = useRef(null)
+
+  useEffect(() => {
+    if (!quickAdd) return
+    amountRef.current?.focus()
+    // Clear the one-shot state so a refresh or Back doesn't reopen the form.
+    navigate(location.pathname, { replace: true, state: null })
+  }, [])
 
   const [showReport, setShowReport] = useState(false)
   const [selectMode, setSelectMode] = useState(false)
@@ -345,7 +359,9 @@ export default function Transactions() {
             <div>
               <label className="label">Amount (₱)</label>
               <input
+                ref={amountRef}
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 min="0"
                 required
