@@ -13,6 +13,13 @@ const EXPENSE_CATEGORIES = [
 const CARRYOVER_INCOME_CATEGORIES = ['Buffer Carryover', 'Cash on Hand']
 const SYSTEM_CATEGORIES = [...CARRYOVER_INCOME_CATEGORIES, 'Loan']
 
+// Written by the Loans page (src/pages/Loans.jsx); keep the two in step.
+const LOAN_CATEGORY = 'Loan'
+const MAX_BORROWER = 60
+const MAX_LOAN_NOTES = 120
+const DUPLICATE_WINDOW_MS = 60_000
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 const TIME_ZONE = 'Asia/Manila'
 const MAX_BATCH = 50
 const MAX_NOTES = 200
@@ -28,7 +35,9 @@ const ENDPOINTS = [
   'GET  /budget       ?month=YYYY-MM     -> budgeted vs actual per category',
   'PUT  /budget       {category, amount}  or  {items: [ ... ]}',
   'GET  /bills                           -> recurring bills and days until due',
-  'GET  /loans                           -> money lent out and whether it is settled'
+  'GET  /loans                           -> money lent out and whether it is settled',
+  'POST /loans        {borrower, amount, date_lent?, notes?, remind_every_days?, deduct?, link_transaction_id?}  or  {items: [ ... ]} (max 50)',
+  'PATCH /loans/<id>  {is_settled: true, settled_at?} to mark paid, {is_settled: false} to undo; also borrower, amount, date_lent, notes, remind_every_days'
 ]
 
 class ApiError extends Error {
@@ -414,21 +423,243 @@ async function getBills(db: any, userId: string) {
   }
 }
 
+const publicLoan = (l: any) => ({
+  id: l.id,
+  borrower: l.borrower,
+  amount: round2(l.amount),
+  date_lent: l.date_lent,
+  remind_every_days: l.remind_every_days,
+  deduct: !!l.deduct,
+  is_settled: !!l.is_settled,
+  settled_at: l.settled_at || null,
+  notes: l.notes || null,
+  lend_transaction_id: l.lend_tx_id || null,
+  repay_transaction_id: l.repay_tx_id || null
+})
+
 async function getLoans(db: any, userId: string) {
   const rows = unwrap(await db.from('loans').select('*').eq('user_id', userId).order('date_lent', { ascending: false })) as any[]
-  const loans = rows.map((l) => ({
-    id: l.id,
-    borrower: l.borrower,
-    amount: round2(l.amount),
-    date_lent: l.date_lent,
-    is_settled: !!l.is_settled,
-    settled_at: l.settled_at || null,
-    notes: l.notes || null
-  }))
+  const loans = rows.map(publicLoan)
   return {
     total_outstanding: round2(loans.filter((l) => !l.is_settled).reduce((s, l) => s + l.amount, 0)),
     loans
   }
+}
+
+// Same wording the Loans page writes on the linked Loan expense.
+const lendNote = (borrower: string, notes: string | null) =>
+  `Lent to ${borrower}${notes ? ` — ${notes}` : ''}`
+
+const tagged = (text: string, keyName: string) => {
+  const tag = `(via ${keyName})`
+  return text ? `${text} ${tag}` : tag
+}
+
+function parseBorrower(v: unknown): string {
+  const s = String(v ?? '').trim()
+  if (!s || s.length > MAX_BORROWER) throw new ApiError(400, `borrower is required (max ${MAX_BORROWER} characters).`)
+  return s
+}
+
+function parseRemindDays(v: unknown): number {
+  const n = Number(v)
+  if (!Number.isInteger(n) || n < 1 || n > 365) {
+    throw new ApiError(400, `remind_every_days must be a whole number from 1 to 365, got "${v}"`)
+  }
+  return n
+}
+
+function parseLoanNotes(v: unknown): string {
+  return String(v ?? '').trim().slice(0, MAX_LOAN_NOTES)
+}
+
+// Adds loans the way the Loans page does: with `deduct` on (the default), a
+// Loan expense is recorded on the date lent so it lowers available money.
+// `link_transaction_id` adopts a Loan expense that already exists instead of
+// creating a second one, for money that was logged as an expense by mistake.
+async function postLoans(db: any, userId: string, keyName: string, body: any) {
+  const items = itemsOf(body)
+  const today = todayISO()
+
+  const linkIds: string[] = items.map((it) => it?.link_transaction_id).filter((v) => v != null).map(String)
+  for (const id of linkIds) {
+    if (!UUID_RE.test(id)) throw new ApiError(400, `link_transaction_id must be a full transaction id, got "${id}"`)
+  }
+  if (new Set(linkIds).size !== linkIds.length) throw new ApiError(400, 'The same link_transaction_id appears twice.')
+  const linkable = new Map<string, any>()
+  const alreadyLinked = new Set<string>()
+  if (linkIds.length) {
+    const txs = unwrap(await db.from('transactions').select('*').eq('user_id', userId).in('id', linkIds)) as any[]
+    for (const t of txs) linkable.set(t.id, t)
+    const taken = unwrap(await db.from('loans').select('lend_tx_id').eq('user_id', userId).in('lend_tx_id', linkIds)) as any[]
+    for (const l of taken) alreadyLinked.add(l.lend_tx_id)
+  }
+
+  const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString()
+  const recent = unwrap(await db.from('loans').select('borrower, amount, date_lent').eq('user_id', userId).gte('created_at', since)) as any[]
+
+  // Validate everything first so a bad item never leaves a half-saved batch.
+  const plans = items.map((item, i) => {
+    try {
+      if (!item || typeof item !== 'object') throw new ApiError(400, 'each item must be an object.')
+      const borrower = parseBorrower(item.borrower)
+      const amount = parseAmount(item.amount)
+      const linkId = item.link_transaction_id == null ? null : String(item.link_transaction_id)
+      const linked = linkId ? linkable.get(linkId) : null
+      if (linkId) {
+        if (!linked) throw new ApiError(404, `No transaction with id ${linkId}.`)
+        if (linked.category !== LOAN_CATEGORY || !(Number(linked.expense) > 0)) {
+          throw new ApiError(400, `Transaction ${linkId} is not a Loan expense, so it cannot be linked.`)
+        }
+        if (alreadyLinked.has(linkId)) throw new ApiError(409, `Transaction ${linkId} already belongs to a loan.`)
+        if (round2(linked.expense) !== amount) {
+          throw new ApiError(400, `amount ${amount} does not match the linked transaction's ${round2(linked.expense)}.`)
+        }
+      }
+      const date = item.date_lent ?? linked?.date ?? today
+      if (!isValidDate(date)) throw new ApiError(400, `date_lent must look like YYYY-MM-DD, got "${item.date_lent}"`)
+      const remind = item.remind_every_days == null ? 7 : parseRemindDays(item.remind_every_days)
+      const deduct = item.deduct ?? item.affect_balance ?? true
+      if (typeof deduct !== 'boolean') throw new ApiError(400, 'deduct must be true or false.')
+      if (linked && !deduct) throw new ApiError(400, 'A linked loan always deducts; leave deduct out or set it to true.')
+      const notes = parseLoanNotes(item.notes)
+      const dupe = recent.some((l) =>
+        String(l.borrower).toLowerCase() === borrower.toLowerCase() &&
+        round2(l.amount) === amount && l.date_lent === date)
+      if (dupe) throw new ApiError(409, `A loan to ${borrower} for ${amount} on ${date} was just saved. Not saving it twice.`)
+      return { borrower, amount, date, remind, deduct, notes, linkId }
+    } catch (e) {
+      if (e instanceof ApiError && items.length > 1) throw new ApiError(e.status, `Item ${i + 1}: ${e.message}`)
+      throw e
+    }
+  })
+
+  const created: string[] = []
+  const rollback = async () => {
+    if (created.length) await db.from('transactions').delete().in('id', created).eq('user_id', userId)
+  }
+  const rows = []
+  try {
+    for (const p of plans) {
+      let lendTxId = p.linkId
+      if (p.deduct && !lendTxId) {
+        const tx = unwrap(
+          await db.from('transactions').insert({
+            date: p.date,
+            category: LOAN_CATEGORY,
+            income: 0,
+            expense: p.amount,
+            notes: tagged(lendNote(p.borrower, p.notes || null), keyName),
+            user_id: userId
+          }).select('id').single()
+        )
+        created.push(tx.id)
+        lendTxId = tx.id
+      }
+      rows.push({
+        user_id: userId,
+        borrower: p.borrower,
+        amount: p.amount,
+        date_lent: p.date,
+        remind_every_days: p.remind,
+        notes: tagged(p.notes, keyName),
+        deduct: p.deduct,
+        is_settled: false,
+        lend_tx_id: lendTxId
+      })
+    }
+    const saved = unwrap(await db.from('loans').insert(rows).select()) as any[]
+    return { saved: saved.length, loans: saved.map(publicLoan) }
+  } catch (e) {
+    await rollback()
+    throw e
+  }
+}
+
+const LOAN_EDIT_FIELDS = ['borrower', 'amount', 'date_lent', 'notes', 'remind_every_days']
+
+// Settle, un-settle or edit one loan, with the same side effects as the
+// Loans page: settling a deducted loan adds the amount back as Loan income,
+// un-settling removes that income again, and editing keeps the linked Loan
+// expense's amount, date and note in step.
+async function patchLoan(db: any, userId: string, keyName: string, id: string, body: any) {
+  const allowed = [...LOAN_EDIT_FIELDS, 'is_settled', 'settled_at']
+  const unknown = Object.keys(body).filter((k) => !allowed.includes(k))
+  if (unknown.length) throw new ApiError(400, `Cannot change ${unknown.join(', ')}. Allowed: ${allowed.join(', ')}.`)
+  if (body.is_settled != null && typeof body.is_settled !== 'boolean') throw new ApiError(400, 'is_settled must be true or false.')
+  if (body.settled_at != null && body.is_settled !== true) throw new ApiError(400, 'settled_at only goes with is_settled: true.')
+  const settledAt = body.settled_at ?? todayISO()
+  if (!isValidDate(settledAt)) throw new ApiError(400, `settled_at must look like YYYY-MM-DD, got "${body.settled_at}"`)
+
+  const load = async () => {
+    const row = unwrap(await db.from('loans').select('*').eq('id', id).eq('user_id', userId).maybeSingle())
+    if (!row) throw new ApiError(404, `No loan with id ${id}.`)
+    return row
+  }
+  let loan = await load()
+
+  const edits = LOAN_EDIT_FIELDS.filter((k) => body[k] !== undefined)
+  // Validate edits before changing anything.
+  const next = {
+    borrower: body.borrower !== undefined ? parseBorrower(body.borrower) : loan.borrower,
+    amount: body.amount !== undefined ? parseAmount(body.amount) : round2(loan.amount),
+    date_lent: body.date_lent !== undefined ? body.date_lent : loan.date_lent,
+    notes: body.notes !== undefined ? (parseLoanNotes(body.notes) ? tagged(parseLoanNotes(body.notes), keyName) : null) : loan.notes,
+    remind_every_days: body.remind_every_days !== undefined ? parseRemindDays(body.remind_every_days) : loan.remind_every_days
+  }
+  if (!isValidDate(next.date_lent)) throw new ApiError(400, `date_lent must look like YYYY-MM-DD, got "${body.date_lent}"`)
+  const willBeSettled = body.is_settled === false ? false : !!loan.is_settled
+  if (edits.length && willBeSettled) {
+    throw new ApiError(409, 'This loan is already settled. Send is_settled: false first (or in the same request) to change it.')
+  }
+
+  // 1. Undo a settlement.
+  if (body.is_settled === false && loan.is_settled) {
+    if (loan.repay_tx_id) {
+      unwrap(await db.from('transactions').delete().eq('id', loan.repay_tx_id).eq('user_id', userId))
+    }
+    unwrap(await db.from('loans').update({ is_settled: false, settled_at: null, repay_tx_id: null })
+      .eq('id', id).eq('user_id', userId))
+    loan = await load()
+  }
+
+  // 2. Edit fields, keeping the linked Loan expense in step.
+  if (edits.length) {
+    if (loan.deduct && loan.lend_tx_id) {
+      unwrap(await db.from('transactions')
+        .update({ date: next.date_lent, expense: next.amount, notes: lendNote(next.borrower, next.notes) })
+        .eq('id', loan.lend_tx_id).eq('user_id', userId))
+    }
+    unwrap(await db.from('loans').update(next).eq('id', id).eq('user_id', userId))
+    loan = await load()
+  }
+
+  // 3. Mark paid.
+  if (body.is_settled === true && !loan.is_settled) {
+    let repayTxId = null
+    if (loan.deduct) {
+      const tx = unwrap(
+        await db.from('transactions').insert({
+          date: settledAt,
+          category: LOAN_CATEGORY,
+          income: round2(loan.amount),
+          expense: 0,
+          notes: tagged(`Repaid by ${loan.borrower}`, keyName),
+          user_id: userId
+        }).select('id').single()
+      )
+      repayTxId = tx.id
+    }
+    const res = await db.from('loans').update({ is_settled: true, settled_at: settledAt, repay_tx_id: repayTxId })
+      .eq('id', id).eq('user_id', userId)
+    if (res.error) {
+      if (repayTxId) await db.from('transactions').delete().eq('id', repayTxId).eq('user_id', userId)
+      unwrap(res)
+    }
+    loan = await load()
+  }
+
+  return { loan: publicLoan(loan) }
 }
 
 // ── Entry point ────────────────────────────────────────────────────────────
@@ -442,6 +673,12 @@ export async function handle(req: Request, db: any): Promise<Response> {
 
     const { userId, keyName } = await authenticate(req, db)
     const q = url.searchParams
+
+    const loanId = /^\/loans\/([^/]+)$/.exec(route)?.[1]
+    if (loanId && method === 'PATCH') {
+      if (!UUID_RE.test(loanId)) throw new ApiError(404, `No loan with id ${loanId}.`)
+      return json(await patchLoan(db, userId, keyName, loanId, await readBody(req)))
+    }
 
     const key = `${method} ${route}`
     switch (key) {
@@ -457,6 +694,7 @@ export async function handle(req: Request, db: any): Promise<Response> {
       case 'PUT /budget': return json(await putBudget(db, userId, await readBody(req)))
       case 'GET /bills': return json(await getBills(db, userId))
       case 'GET /loans': return json(await getLoans(db, userId))
+      case 'POST /loans': return json(await postLoans(db, userId, keyName, await readBody(req)), 201)
     }
     throw new ApiError(404, `No such endpoint: ${key}. Call GET / for the list.`)
   } catch (e) {

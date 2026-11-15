@@ -38,9 +38,12 @@ function setupMessage(key) {
     '- GET /transactions?month=YYYY-MM — list entries',
     '- GET /budget and PUT /budget {category, amount} — read and change my budget',
     '- POST /categories {name, type} — add a category (type: income or expense)',
-    '- GET /bills, GET /loans, GET /history',
+    '- GET /loans — money I lent out; POST /loans {borrower, amount, date_lent?, notes?, remind_every_days?} — add one',
+    '- PATCH /loans/<id> {is_settled: true} — mark a loan paid back ({is_settled: false} undoes it); can also change borrower, amount, date_lent, notes, remind_every_days',
+    '- GET /bills, GET /history',
     '',
     'Rules: only use categories from GET /categories (add a new one first if I ask).',
+    'Money I lend goes in POST /loans, not as a Loan expense: the loan records that expense itself.',
     'Before saving, repeat the entries back to me and wait for my OK.',
     'Keep this key secret and never show it in a reply.'
   ].join('\n')
@@ -128,8 +131,8 @@ export default function ApiAccess() {
         </h2>
         <p className="text-xs text-slate-500 mt-1">
           Let a bot or another app read and add to your data. A key gives full read access to your
-          finances, so only give it to tools you trust. It can add entries and change budgets, but
-          it cannot delete anything.
+          finances, so only give it to tools you trust. It can add entries, change budgets, and add,
+          edit or mark loans paid, but it cannot delete anything.
         </p>
       </div>
 

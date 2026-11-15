@@ -1,7 +1,8 @@
 # Yutori API Setup
 
 The API lets an outside tool (for example a chat bot) read your data, add
-transactions and categories, and change budgets. It cannot delete anything.
+transactions and categories, change budgets, and add, edit or settle loans.
+It cannot delete entries.
 
 ## 1. Create the keys table
 
@@ -51,6 +52,8 @@ curl -H "Authorization: Bearer <your key>" https://<project-ref>.supabase.co/fun
 | PUT | `/budget` | `{category, amount}` or `{items: [...]}` |
 | GET | `/bills` | Recurring bills and days until due |
 | GET | `/loans` | Money lent out and whether it is settled |
+| POST | `/loans` | `{borrower, amount, date_lent?, notes?, remind_every_days?, deduct?, link_transaction_id?}` or `{items: [...]}` (max 50) |
+| PATCH | `/loans/<id>` | `{is_settled: true, settled_at?}` marks paid, `{is_settled: false}` undoes it; also `borrower`, `amount`, `date_lent`, `notes`, `remind_every_days` |
 
 Notes:
 
@@ -61,6 +64,14 @@ Notes:
 - Entries added through the API get `(via <key name>)` at the end of their
   notes so they are easy to spot in the app.
 - A batch is all-or-nothing: if one item is invalid, none are saved.
+- Loans work like the Loans page. With `deduct` on (the default), adding a
+  loan records a Loan expense on the date lent, marking it paid adds the amount
+  back as Loan income, and editing keeps that expense in step.
+  `remind_every_days` defaults to 7.
+- `link_transaction_id` turns an existing Loan expense into a loan instead of
+  recording a second one (the amount must match).
+- The same loan (borrower, amount, date) sent twice within a minute is
+  refused with `409`.
 
 ## Bill reminder function
 
