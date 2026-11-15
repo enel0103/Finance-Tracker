@@ -181,7 +181,18 @@ function buildInfo(type: string, clientPublicKey: Uint8Array, serverPublicKey: U
 // Main handler
 // ──────────────────────────────────────────────────
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  // Only the scheduled job may trigger this. It sends the service role key as
+  // its bearer token; the public anon key (which also passes Supabase's own
+  // JWT check) must not be enough to make everyone's reminders fire.
+  const bearer = (req.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').trim()
+  if (!bearer || bearer !== SUPABASE_SERVICE_KEY) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
   const today = new Date()

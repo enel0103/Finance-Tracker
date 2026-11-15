@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { User, Mail, Check, Lock, Eye, EyeOff, Download, Smartphone, RefreshCw, LogOut } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext.jsx'
 import { supabase } from '../lib/supabase'
+import ApiAccess from '../components/ApiAccess.jsx'
 
 export default function Settings() {
   const { user, updateUsername, signOut } = useAuth()
@@ -293,6 +294,8 @@ export default function Settings() {
           </button>
         </div>
       </form>
+
+      <ApiAccess />
 
       {/* Phones have no sidebar; the desktop sign-out button lives there. */}
       <button
