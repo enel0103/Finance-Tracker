@@ -26,19 +26,35 @@ export default function Transactions() {
   // Set by the Dashboard's Income card: open the add form on that month with
   // the category picked, so only the amount is left to type.
   const quickAdd = location.state?.quickAdd
+  // An unsaved add-form draft, kept in localStorage so it survives switching
+  // pages or the phone reloading the app in the background.
+  const draftKey = `yutori:tx-draft:${user.id}`
+  const [draft] = useState(() => (quickAdd ? null : readDraft(draftKey)))
   const [showManage, setShowManage] = useState(false)
-  const [year, setYear] = useState(quickAdd?.year ?? now.getFullYear())
-  const [month, setMonth] = useState(quickAdd?.month ?? now.getMonth())
+  const [year, setYear] = useState(quickAdd?.year ?? draft?.year ?? now.getFullYear())
+  const [month, setMonth] = useState(quickAdd?.month ?? draft?.month ?? now.getMonth())
   const [txs, setTxs] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(!!quickAdd)
+  const [showForm, setShowForm] = useState(!!quickAdd || !!draft)
 
-  const [form, setForm] = useState({
+  const [form, setForm] = useState(draft?.form || {
     date: todayISO(),
     category: quickAdd?.category || 'Salary',
     amount: '',
     notes: ''
   })
+
+  useEffect(() => {
+    try {
+      if (showForm && (form.amount || form.notes)) {
+        localStorage.setItem(draftKey, JSON.stringify({ form, year, month, savedAt: Date.now() }))
+      } else {
+        localStorage.removeItem(draftKey)
+      }
+    } catch {
+      // Storage unavailable (private mode): the draft just won't persist.
+    }
+  }, [form, showForm, year, month])
   const [saving, setSaving] = useState(false)
   const amountRef = useRef(null)
 
@@ -95,10 +111,12 @@ export default function Transactions() {
 
   useEffect(() => {
     if (!showForm) return
-    setForm((prev) => ({
-      ...prev,
-      date: defaultDateForSelectedMonth()
-    }))
+    // Only move the date when it falls outside the selected month, so a
+    // restored draft keeps the date the user had picked.
+    const prefix = `${year}-${String(month + 1).padStart(2, '0')}`
+    setForm((prev) =>
+      prev.date?.startsWith(prefix) ? prev : { ...prev, date: defaultDateForSelectedMonth() }
+    )
   }, [year, month, showForm])
 
   const handleAdd = async (e) => {
@@ -702,6 +720,19 @@ export default function Transactions() {
       </div>
     </div>
   )
+}
+
+// Drafts older than this are dropped so a forgotten one doesn't reopen days later.
+const DRAFT_MAX_AGE_MS = 12 * 60 * 60 * 1000
+
+function readDraft(key) {
+  try {
+    const d = JSON.parse(localStorage.getItem(key))
+    if (!d?.form || Date.now() - d.savedAt > DRAFT_MAX_AGE_MS) return null
+    return d
+  } catch {
+    return null
+  }
 }
 
 function ManageCategories({ custom, deleted, addCategory, removeCategory, deleteDefault, restoreDefault, onClose }) {
